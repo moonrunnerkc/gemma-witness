@@ -1,0 +1,98 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.07s
+     Running tests/pipeline.rs (target/debug/deps/pipeline-d6111e6c6132920c)
+
+running 3 tests
+test consistency_check_flags_audio_image_mismatch_as_inconsistent ... [scenario 3-mismatch] verdict=inconsistent reason=The images describe an exterior property scene labeled "Lot B," which does not match the indoor kitchen incident detailed in the transcript. transcript_len=353 reasoning_len=1885 latency_ms=8059
+[scenario 3-mismatch reasoning-trace-verbatim-begin]
+Thinking Process:
+
+1.  **Analyze the Request:** The goal is to determine if the `image_descriptions` are consistent with the information provided in the `<transcript>` and `<incident_report>`. The output must be a single JSON object with `verdict` and `reason`.
+
+2.  **Analyze the Source Material (Transcript & Incident Report):**
+    *   **Setting:** Residential kitchen, second floor apartment.
+    *   **Incident:** Gas stove burner left on (low flame), faint smell of gas. Pot of water on the lid burner. Refrigerator humming. Window closed.
+    *   **Conclusion:** Potential safety hazard.
+    *   *Key elements:* Kitchen, stove, gas smell, low flame.
+
+3.  **Analyze the Image Descriptions:**
+    *   **Image 1:** Stylized representation, "Lot B Exterior," flat light blue background, dark gray foreground, single yellow sphere on a thin black pole, vertical white lines.
+    *   **Image 2:** Graphic representation, "LOT B WEST CORNER," dark ground, two stylized low-profile rectangles (one blue, one red).
+
+4.  **Compare and Evaluate Consistency:**
+    *   The transcript describes an indoor scene (a kitchen) involving a stove and gas.
+    *   The image descriptions describe outdoor/property boundary scenes ("Lot B Exterior," "LOT B WEST CORNER") involving abstract shapes, poles, and colored rectangles.
+    *   There is absolutely no overlap between the physical setting or objects described in the transcript/report and the abstract, exterior property descriptions provided for the images.
+
+5.  **Determine Verdict:** The image descriptions are completely unrelated to the incident described in the audio/report.
+
+6.  **Formulate Output:**
+    *   `verdict`: inconsistent
+    *   `reason`: The images describe an exterior property ("Lot B") scene, which does not match the indoor kitchen incident described in the transcript. (Ensure it is short and under 200 characters).
+[scenario 3-mismatch reasoning-trace-verbatim-end]
+[scenario 3-mismatch hash-check] pipeline=9753d8e277646443e31181795247d6644eaf0737cf28f81526ffcb71469975e8 direct=9753d8e277646443e31181795247d6644eaf0737cf28f81526ffcb71469975e8
+ok
+test construction_site_scenario_passes_schema_and_returns_a_valid_verdict ... [scenario 1-construction] verdict=consistent reason=The images depict elements mentioned in the transcript, such as yellow machinery, orange-clad workers, and safety signage from the Elm Street site. transcript_len=418 reasoning_len=2931 latency_ms=9147
+[scenario 1-construction reasoning-trace-verbatim-begin]
+Here's a thinking process to arrive at the verdict:
+
+1.  **Analyze the Transcript:**
+    *   **Setting:** Elm Street construction site, afternoon of October 14th, 2025.
+    *   **Activity:** Pouring concrete for a new foundation.
+    *   **Elements present:** Yellow excavator, stack of rebar, two workers in orange high-visibility vests and hard hats, concrete chute, site fence with a safety notice.
+    *   **Condition:** No obvious hazard visible.
+
+2.  **Analyze the Incident Report:**
+    *   **Date/Time:** 2025-10-14T14:00:00Z (Matches the general timeframe).
+    *   **Location:** Elm Street construction site (Matches).
+    *   **Summary:** Pouring concrete for a new foundation (Matches the activity).
+    *   **Severity:** 1 (Low/Minor).
+
+3.  **Analyze the Image Descriptions:**
+    *   **Image 1:** Depicts a stylized illustration of a yellow vehicle (possibly truck/construction vehicle), flanked by two figures in orange tops and yellow hats. Text mentions "ELM ST SITE 14 OCT."
+    *   **Image 2:** Displays a bright yellow sign with a black border against a gray, gridded background. Prominently features "DANGER" in red, followed by "HARD HAT AND VEST REQUIRED."
+
+4.  **Compare Transcript/Incident Report vs. Image Descriptions (Consistency Check):**
+
+    *   **Transcript elements mentioned in the images:**
+        *   Yellow vehicle (Excavator mentioned in transcript, matches "yellow vehicle" in Image 1).
+        *   Orange tops/high-visibility vests (Mentioned in transcript, matches "orange tops" in Image 1).
+        *   Hard hats (Mentioned in transcript, matches "yellow hats" in Image 1, and the requirement in Image 2).
+        *   Elm St Site 14 Oct (Matches the location/date context).
+
+    *   **Discrepancies/Nuances:**
+        *   The transcript describes a *live scene* with specific equipment (excavator, rebar, chute).
+        *   Image 1 describes a *stylized illustration* of a vehicle and figures, which is a slight shift from a direct observation of the scene, but the core elements (yellow vehicle, orange/yellow attire, site context) are present.
+        *   Image 2 describes a *safety sign* ("DANGER," "HARD HAT AND VEST REQUIRED"). The transcript mentions a "printed safety notice attached to [the] site fence," which aligns with the presence of safety warnings.
+
+5.  **Determine Overall Consistency:**
+    *   The images depict elements (yellow machinery, orange-clad workers, site context, safety warnings) that are directly supported by the transcript and incident report.
+    *   While the images might be illustrations or close-ups of specific items (like the sign), they do not contradict the narrative that the scene involved a construction site on that date with specific elements present.
+
+6.  **Conclusion:** The image descriptions are consistent with the evidence provided in the transcript and incident report.
+
+7.  **Final JSON Generation.** (The verdict is `consistent`).
+[scenario 1-construction reasoning-trace-verbatim-end]
+[scenario 1-construction hash-check] pipeline=6283440ad69245a5a3e475a4b439ea3b0b71754a91fb6944d9a8f0fbc0e48161 direct=6283440ad69245a5a3e475a4b439ea3b0b71754a91fb6944d9a8f0fbc0e48161
+ok
+test creek_observation_scenario_passes_schema_and_returns_a_valid_verdict ... [scenario 2-creek] verdict=inconsistent reason=The image depicts a stylized scene titled 'PARK CREEK 1700' featuring orange trees and a bench, which does not match the transcript's description of the creek scene. transcript_len=357 reasoning_len=2156 latency_ms=7337
+[scenario 2-creek reasoning-trace-verbatim-begin]
+Thinking Process:
+
+1.  **Analyze the Transcript:** The speaker describes being by a small creek in a public park on the afternoon of October 16th, 2025, around 5:00. The creek has clear, running water over rounded stones. A wooden footbridge is 10 meters downstream. There are oak trees with autumn leaves. No pollution or unusual discoloration is seen.
+2.  **Analyze the Incident Report:** The report confirms the date (2025-10-16T17:00:00Z), location (Small creek in the public park), and the core observation (small creek flowing clearly over stones). This aligns with the transcript.
+3.  **Analyze the Image Description (Image 1):** The image is described as a stylized, flat illustration titled "PARK CREEK 1700." It has a light blue background and green foreground. Key elements mentioned are *two orange trees* and a *dark brown rectangular bench* with small gray circles on the ground.
+4.  **Compare Transcript/Report vs. Image Description:**
+    *   Transcript mentions: Small creek, public park, October 16th, oak trees, autumn leaves, clear water.
+    *   Image description mentions: Stylized illustration, "PARK CREEK 1700," orange trees, brown bench, gray circles.
+5.  **Check for Consistency:**
+    *   The transcript describes a specific scene (creek, oak trees, autumn leaves, modern setting implied by the detailed observation).
+    *   The image description describes a scene that is highly stylized ("flat illustration," "PARK CREEK 1700") and features elements (orange trees, bench) that are not mentioned in the transcript. Furthermore, the title "PARK CREEK 1700" suggests a different setting or time period than the transcript's modern observation.
+6.  **Conclusion:** The image description does not match the setting, details, or context provided in the transcript or the incident report. The discrepancy is too significant.
+7.  **Determine Verdict:** The image descriptions are inconsistent with the audio narrative.
+8.  **Formulate Reason:** The image depicts a stylized scene with orange trees and a bench, which differs significantly from the creek scene described in the transcript. (Keep it short and focused on the mismatch).
+[scenario 2-creek reasoning-trace-verbatim-end]
+[scenario 2-creek hash-check] pipeline=133e503f4634a01e834302d63f8951dd393db8074b09542fc51dd58afa9f5549 direct=133e503f4634a01e834302d63f8951dd393db8074b09542fc51dd58afa9f5549
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.56s
+
