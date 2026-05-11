@@ -16,4 +16,5 @@ pub use http::{DEFAULT_ENDPOINT, DEFAULT_MODEL};
 pub use passes::analyze_image::{
     analyze_image, analyze_image_with_budget, ImageAnalysis, DEFAULT_VISUAL_TOKEN_BUDGET,
 };
+pub use passes::check_consistency::{check_consistency, ConsistencyOutcome, ALLOWED_VERDICTS};
 pub use passes::transcribe::{transcribe, TranscribeOutcome};
