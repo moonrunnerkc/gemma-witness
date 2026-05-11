@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust-checks:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: fmt
+        run: cargo fmt -- --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: build
+        run: cargo build --workspace
+
+      - name: unit and integration tests
+        run: cargo test --workspace -- --test-threads=1
+        env:
+          RUST_BACKTRACE: 1
+
+  verifier-js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/verifier/pnpm-lock.yaml
+
+      - name: install
+        working-directory: apps/verifier
+        run: pnpm install --frozen-lockfile
+
+      - name: lint
+        working-directory: apps/verifier
+        run: pnpm lint
+
+      - name: build
+        working-directory: apps/verifier
+        run: pnpm build
+
+      - name: test
+        working-directory: apps/verifier
+        run: npx tsx tests/e2e.test.ts
+
+  rust-e2e-degraded:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: build
+        run: cargo build --workspace
+
+      # The mlx-vlm sidecar requires Apple Silicon with mlx-vlm installed.
+      # GitHub Actions macos-latest runners do not host the model or the Python
+      # environment, so the live e2e is unavailable in CI. The test gracefully
+      # skips when the sidecar is unreachable, so we run it to confirm the skip
+      # path works and the build compiles the test target.
+      - name: degraded e2e (skip path)
+        run: cargo test -p witness-core --test day-4-e2e -- --nocapture
+        env:
+          RUST_BACKTRACE: 1
+
+      # Run the Rust verifier round-trip tests that do not need the sidecar.
+      - name: bundle round-trip tests
+        run: cargo test -p witness-core --test bundle_roundtrip -- --nocapture
+
+      - name: canonicalization tests
+        run: cargo test -p witness-core --test canonicalization -- --nocapture
+
+      - name: keystore tests
+        run: cargo test -p witness-core --test keystore -- --nocapture
+
+      - name: incident schema tests
+        run: cargo test -p witness-core --test incident_schema -- --nocapture
+
+  em-dash-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: scan for em dashes
+        run: |
+          set +e
+          find . -type f \( -name '*.md' -o -name '*.rs' -o -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.json' -o -name '*.toml' -o -name '*.py' \) -not -path './.git/*' -not -path './target/*' -not -path '*/node_modules/*' -not -path '*/dist/*' -exec grep -l $'\xe2\x80\x94' {} + > /tmp/em-dash-hits.txt
+          if [ -s /tmp/em-dash-hits.txt ]; then
+            echo "Em dash found in the following files:"
+            cat /tmp/em-dash-hits.txt
+            exit 1
+          fi
+          echo "No em dashes found."
