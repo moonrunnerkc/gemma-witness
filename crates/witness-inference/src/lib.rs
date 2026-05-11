@@ -5,6 +5,7 @@ mod client;
 mod error;
 mod http;
 pub mod passes;
+mod pipeline;
 mod response;
 
 pub use client::{
@@ -18,3 +19,4 @@ pub use passes::analyze_image::{
 };
 pub use passes::check_consistency::{check_consistency, ConsistencyOutcome, ALLOWED_VERDICTS};
 pub use passes::transcribe::{transcribe, TranscribeOutcome};
+pub use pipeline::{run_full_pipeline, run_full_pipeline_default, PipelineResult, StructureOutcomeSerde};
