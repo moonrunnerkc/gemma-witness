@@ -1,0 +1,12 @@
+[
+  {"transcript": "01-fall-from-elevation.txt", "incident_type": "safety_hazard", "source": "Synthesized from OSHA accident-investigation narrative pattern (fall from elevation, unguarded floor opening). Pattern reference: osha.gov/ords/imis/accidentsearch.html keyword=fall."},
+  {"transcript": "02-chemical-release.txt", "incident_type": "environmental", "source": "Synthesized from EPA enforcement narrative pattern for unpermitted air release. Pattern reference: epa.gov/enforcement/cases-and-settlements."},
+  {"transcript": "03-wage-theft.txt", "incident_type": "labor", "source": "Synthesized from US Dept of Labor Wage and Hour Division complaint narrative pattern. Reference: dol.gov/agencies/whd/contact/complaints."},
+  {"transcript": "04-harassment.txt", "incident_type": "harassment", "source": "Synthesized from EEOC charge narrative pattern (workplace sexual harassment). Reference: eeoc.gov/filing-charge-discrimination."},
+  {"transcript": "05-property-damage.txt", "incident_type": "property_damage", "source": "Synthesized from municipal incident report narrative pattern (vehicle into fixed object on public property)."},
+  {"transcript": "06-machine-guarding.txt", "incident_type": "safety_hazard", "source": "Synthesized from OSHA machine-guarding citation narrative pattern. Reference: osha.gov/laws-regs/regulations/standardnumber/1910/1910.212."},
+  {"transcript": "07-illegal-discharge.txt", "incident_type": "environmental", "source": "Synthesized from EPA Clean Water Act enforcement narrative pattern (unpermitted point-source discharge)."},
+  {"transcript": "08-vehicle-defect.txt", "incident_type": "other", "source": "Synthesized from NHTSA vehicle owner questionnaire pattern. Reference: nhtsa.gov/recalls. Labeled `other` because the schema has no `vehicle_defect` enum value."},
+  {"transcript": "09-gas-leak.txt", "incident_type": "safety_hazard", "source": "Synthesized from utility-incident narrative pattern (residential natural gas leak)."},
+  {"transcript": "10-playground-hazard.txt", "incident_type": "safety_hazard", "source": "Synthesized from CPSC playground-hazard reporting pattern. Reference: cpsc.gov/Safety-Education/Safety-Education-Centers/Playground-Safety."}
+]
