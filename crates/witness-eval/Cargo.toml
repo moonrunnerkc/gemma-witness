@@ -1,0 +1,22 @@
+[package]
+name = "witness-eval"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Day 2 evaluation harness for the structured-extraction pipeline."
+
+[[bin]]
+name = "witness-eval"
+path = "src/main.rs"
+
+[dependencies]
+witness-core = { path = "../witness-core" }
+witness-inference = { path = "../witness-inference" }
+clap.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
