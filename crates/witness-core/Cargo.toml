@@ -1,0 +1,17 @@
+[package]
+name = "witness-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Core types, schema, and bundle primitives for Gemma.Witness."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+schemars = { workspace = true, features = ["chrono"] }
+thiserror.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+jsonschema.workspace = true
