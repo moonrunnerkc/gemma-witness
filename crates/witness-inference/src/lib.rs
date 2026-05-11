@@ -2,10 +2,12 @@
 
 mod client;
 mod error;
+mod http;
 mod response;
 
 pub use client::{
     structure_incident, structure_incident_with, InferenceClient, StructureOutcome,
-    DEFAULT_ENDPOINT, DEFAULT_MAX_RETRIES, DEFAULT_MODEL, DEFAULT_TEMPERATURE, DEFAULT_TOP_P,
+    DEFAULT_MAX_RETRIES, DEFAULT_TEMPERATURE, DEFAULT_TOP_P,
 };
 pub use error::InferenceError;
+pub use http::{DEFAULT_ENDPOINT, DEFAULT_MODEL};

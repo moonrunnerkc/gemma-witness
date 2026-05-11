@@ -12,12 +12,9 @@ use serde_json::{json, Value};
 use witness_core::IncidentReport;
 
 use crate::error::InferenceError;
+use crate::http::{DEFAULT_ENDPOINT, DEFAULT_MODEL};
 use crate::response::{extract_tool_arguments, TOOL_NAME};
 
-/// Default sidecar base URL.
-pub const DEFAULT_ENDPOINT: &str = "http://127.0.0.1:8080";
-/// Default Gemma 4 E4B model id served by the sidecar.
-pub const DEFAULT_MODEL: &str = "mlx-community/gemma-4-e4b-it-4bit";
 /// Sampling temperature.
 ///
 /// 0.2 keeps the model close to greedy while leaving headroom for the

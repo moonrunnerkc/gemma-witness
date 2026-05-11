@@ -49,4 +49,18 @@ pub enum InferenceError {
     /// The schema passed by the caller did not compile.
     #[error("provided JSON Schema did not compile: {detail}. validate the schema with `jq` and a schema linter.")]
     BadSchema { detail: String },
+
+    /// A local file (audio or image fixture) could not be read.
+    #[error("io failure for {path}: {detail}: {source}")]
+    Io {
+        path: String,
+        detail: String,
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// The model returned a string that could not be parsed as the expected
+    /// verdict literal. The raw output is preserved for the caller to log.
+    #[error("verdict pass did not return a recognised label: {detail}. raw model content: {raw:?}.")]
+    BadVerdict { raw: String, detail: String },
 }
