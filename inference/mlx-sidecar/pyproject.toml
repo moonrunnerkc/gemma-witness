@@ -1,0 +1,15 @@
+[project]
+name = "gemma-witness-mlx-sidecar"
+version = "0.1.0"
+description = "Local mlx-vlm sidecar for Gemma.Witness offline inference"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "mlx-vlm",
+  "torchvision",
+  "fastapi",
+  "uvicorn",
+  "requests",
+]
+
+[tool.uv]
+package = false
