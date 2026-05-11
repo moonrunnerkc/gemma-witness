@@ -51,28 +51,26 @@ pub fn verify_bundle(
     known_fingerprints: &[String],
 ) -> Result<VerificationReport, WitnessCoreError> {
     let entries = read_bundle(path)?;
-    let manifest_bytes = entries
-        .get(bundle_paths::MANIFEST)
-        .ok_or_else(|| WitnessCoreError::BundleStructure {
-            detail: format!(
-                "bundle at {path:?} is missing {}; not a valid .witness archive",
-                bundle_paths::MANIFEST
-            ),
-        })?;
-    let signature_bytes = entries
-        .get(bundle_paths::SIGNATURE)
-        .ok_or_else(|| WitnessCoreError::BundleStructure {
-            detail: format!("bundle at {path:?} is missing {}", bundle_paths::SIGNATURE),
-        })?;
+    let manifest_bytes =
+        entries
+            .get(bundle_paths::MANIFEST)
+            .ok_or_else(|| WitnessCoreError::BundleStructure {
+                detail: format!(
+                    "bundle at {path:?} is missing {}; not a valid .witness archive",
+                    bundle_paths::MANIFEST
+                ),
+            })?;
+    let signature_bytes =
+        entries
+            .get(bundle_paths::SIGNATURE)
+            .ok_or_else(|| WitnessCoreError::BundleStructure {
+                detail: format!("bundle at {path:?} is missing {}", bundle_paths::SIGNATURE),
+            })?;
 
-    let manifest: Manifest =
-        serde_json::from_slice(manifest_bytes).map_err(|source| WitnessCoreError::Serialize {
-            source,
-        })?;
-    let signature_doc: SignatureDocument =
-        serde_json::from_slice(signature_bytes).map_err(|source| WitnessCoreError::Serialize {
-            source,
-        })?;
+    let manifest: Manifest = serde_json::from_slice(manifest_bytes)
+        .map_err(|source| WitnessCoreError::Serialize { source })?;
+    let signature_doc: SignatureDocument = serde_json::from_slice(signature_bytes)
+        .map_err(|source| WitnessCoreError::Serialize { source })?;
 
     let mut details: Vec<String> = Vec::new();
     let mut report = VerificationReport {
@@ -85,8 +83,7 @@ pub fn verify_bundle(
 
     report.signature_valid = check_signature(&manifest, &signature_doc, &mut details);
     report.assets_untampered = check_assets(&manifest, &entries, &mut details);
-    report.model_fingerprint_known =
-        check_fingerprint(&manifest, known_fingerprints, &mut details);
+    report.model_fingerprint_known = check_fingerprint(&manifest, known_fingerprints, &mut details);
 
     report.details = details;
     Ok(report)

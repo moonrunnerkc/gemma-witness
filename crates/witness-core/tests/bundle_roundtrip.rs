@@ -93,10 +93,7 @@ fn sign_and_seal(out: &std::path::Path) -> (Vec<String>, ed25519_dalek::SigningK
     };
     let inputs = make_inputs(pem, kid);
     build_and_seal_bundle(&inputs, &signer, out).expect("seal");
-    (
-        vec![inputs.model_fingerprint.sha256.clone()],
-        signing_key,
-    )
+    (vec![inputs.model_fingerprint.sha256.clone()], signing_key)
 }
 
 #[test]
@@ -125,7 +122,10 @@ fn rejects_bundle_after_audio_byte_modification() {
 
     let report = verify_bundle(&bundle, &known).expect("verify");
     assert!(report.manifest_parsed);
-    assert!(report.signature_valid, "signature should remain valid; only the asset changed");
+    assert!(
+        report.signature_valid,
+        "signature should remain valid; only the asset changed"
+    );
     assert!(!report.assets_untampered, "asset hash must fail");
     assert!(report
         .details
@@ -151,7 +151,10 @@ fn rejects_bundle_after_manifest_byte_modification() {
     write_bundle(&bundle, &zipped).unwrap();
 
     let report = verify_bundle(&bundle, &known).expect("verify");
-    assert!(!report.signature_valid, "signature must fail after manifest mutation");
+    assert!(
+        !report.signature_valid,
+        "signature must fail after manifest mutation"
+    );
 }
 
 #[test]
@@ -181,7 +184,10 @@ fn rejects_bundle_after_signature_pubkey_swap() {
     write_bundle(&bundle, &zipped).unwrap();
 
     let report = verify_bundle(&bundle, &known).expect("verify");
-    assert!(!report.signature_valid, "signature must fail under a foreign key");
+    assert!(
+        !report.signature_valid,
+        "signature must fail under a foreign key"
+    );
 }
 
 #[test]

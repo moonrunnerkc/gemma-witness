@@ -155,8 +155,7 @@ impl InferenceClient {
             let report: IncidentReport = match serde_json::from_value(parsed) {
                 Ok(r) => r,
                 Err(source) => {
-                    last_error =
-                        format!("matched schema but not Rust type: {source}");
+                    last_error = format!("matched schema but not Rust type: {source}");
                     continue;
                 }
             };
@@ -212,7 +211,10 @@ impl InferenceClient {
     }
 
     async fn post(&self, body: &Value) -> Result<Value, InferenceError> {
-        let url = format!("{}/v1/chat/completions", self.endpoint.trim_end_matches('/'));
+        let url = format!(
+            "{}/v1/chat/completions",
+            self.endpoint.trim_end_matches('/')
+        );
         let response = self
             .http
             .post(&url)

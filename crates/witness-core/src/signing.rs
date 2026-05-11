@@ -6,8 +6,8 @@
 //! [`Signature`] back. The bytes of the private scalar are not exposed by
 //! the public API.
 
-use ed25519_dalek::pkcs8::EncodePublicKey;
 use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
+use ed25519_dalek::pkcs8::EncodePublicKey;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use sha2::{Digest, Sha256};
 
@@ -47,10 +47,11 @@ pub fn verify_pem(
 /// Returns [`WitnessCoreError::BadPublicKey`] when the PEM cannot be decoded.
 pub fn parse_public_key_pem(public_key_pem: &str) -> Result<VerifyingKey, WitnessCoreError> {
     use ed25519_dalek::pkcs8::DecodePublicKey;
-    VerifyingKey::from_public_key_pem(public_key_pem)
-        .map_err(|source| WitnessCoreError::BadPublicKey {
+    VerifyingKey::from_public_key_pem(public_key_pem).map_err(|source| {
+        WitnessCoreError::BadPublicKey {
             detail: source.to_string(),
-        })
+        }
+    })
 }
 
 /// Encode a [`VerifyingKey`] as PKCS#8 PEM (LF line endings).

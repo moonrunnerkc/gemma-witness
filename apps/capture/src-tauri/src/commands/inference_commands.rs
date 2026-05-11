@@ -58,15 +58,20 @@ pub async fn run_inference_cmd(
     })?;
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
     let reasoning_path = trace_dir.join(format!("reasoning-{stamp}.txt"));
-    std::fs::write(&reasoning_path, pipeline.consistency.reasoning_trace.as_bytes()).map_err(
-        |err| AppError::Io {
-            path: reasoning_path.display().to_string(),
-            detail: format!("write reasoning trace: {err}"),
-        },
-    )?;
+    std::fs::write(
+        &reasoning_path,
+        pipeline.consistency.reasoning_trace.as_bytes(),
+    )
+    .map_err(|err| AppError::Io {
+        path: reasoning_path.display().to_string(),
+        detail: format!("write reasoning trace: {err}"),
+    })?;
 
-    let image_descriptions: Vec<String> =
-        pipeline.images.iter().map(|i| i.description.clone()).collect();
+    let image_descriptions: Vec<String> = pipeline
+        .images
+        .iter()
+        .map(|i| i.description.clone())
+        .collect();
     let structured_summary = serde_json::to_string_pretty(&pipeline.structure.report)
         .unwrap_or_else(|_| "<unable to render report>".to_string());
 

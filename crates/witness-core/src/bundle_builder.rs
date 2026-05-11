@@ -69,15 +69,15 @@ pub fn build_and_seal_bundle<S: BundleSigner>(
     signer: &S,
     out_path: &Path,
 ) -> Result<String, WitnessCoreError> {
-    let audio_bytes = std::fs::read(&inputs.audio_path).map_err(|source| {
-        WitnessCoreError::AssetRead {
+    let audio_bytes =
+        std::fs::read(&inputs.audio_path).map_err(|source| WitnessCoreError::AssetRead {
             path: inputs.audio_path.clone(),
             source,
-        }
-    })?;
+        })?;
     let audio_hash = hash_bytes_hex(&audio_bytes);
 
-    let mut image_blobs: Vec<(String, Vec<u8>, String)> = Vec::with_capacity(inputs.image_paths.len());
+    let mut image_blobs: Vec<(String, Vec<u8>, String)> =
+        Vec::with_capacity(inputs.image_paths.len());
     for (i, image_path) in inputs.image_paths.iter().enumerate() {
         let extension = image_extension(image_path)?;
         let bytes = std::fs::read(image_path).map_err(|source| WitnessCoreError::AssetRead {

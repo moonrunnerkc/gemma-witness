@@ -31,7 +31,9 @@ pub enum WitnessCoreError {
     },
 
     /// A schema file on disk did not parse as JSON.
-    #[error("schema file at {path:?} did not parse as JSON: {source}. validate the file with `jq`.")]
+    #[error(
+        "schema file at {path:?} did not parse as JSON: {source}. validate the file with `jq`."
+    )]
     SchemaParse {
         path: PathBuf,
         #[source]
@@ -81,7 +83,9 @@ pub enum WitnessCoreError {
     PublicKeyEncode { detail: String },
 
     /// The signature did not match the manifest payload under the embedded key.
-    #[error("manifest signature verification failed: signature does not match canonicalized payload")]
+    #[error(
+        "manifest signature verification failed: signature does not match canonicalized payload"
+    )]
     SignatureInvalid,
 
     /// OS keychain operation failed.
@@ -89,6 +93,8 @@ pub enum WitnessCoreError {
     Keyring { detail: String },
 
     /// Caller asked to use the device key but none has been generated yet.
-    #[error("no device key has been generated. call load_or_create_device_key once before signing.")]
+    #[error(
+        "no device key has been generated. call load_or_create_device_key once before signing."
+    )]
     NoDeviceKey,
 }

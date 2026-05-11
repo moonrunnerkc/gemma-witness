@@ -44,8 +44,7 @@ pub async fn seal_bundle_cmd(state: State<'_, SharedState>) -> Result<SealedBund
             .clone();
         let images = guard.picked_images.clone();
         let snap = guard.last_pipeline.clone().ok_or_else(|| AppError::State {
-            detail: "no inference pipeline output staged; run inference before sealing"
-                .to_string(),
+            detail: "no inference pipeline output staged; run inference before sealing".to_string(),
         })?;
         let data_dir = guard.data_dir.clone().ok_or_else(|| AppError::State {
             detail: "app_local_data_dir was not initialized; call initialize_device first"
@@ -105,10 +104,9 @@ fn load_model_fingerprint() -> Result<ModelFingerprint, AppError> {
         path: p.display().to_string(),
         detail: format!("read model-fingerprint.json: {err}"),
     })?;
-    let parsed: serde_json::Value =
-        serde_json::from_str(&raw).map_err(|err| AppError::State {
-            detail: format!("parse model-fingerprint.json: {err}"),
-        })?;
+    let parsed: serde_json::Value = serde_json::from_str(&raw).map_err(|err| AppError::State {
+        detail: format!("parse model-fingerprint.json: {err}"),
+    })?;
     let model_id = parsed["model_id"]
         .as_str()
         .ok_or_else(|| AppError::State {

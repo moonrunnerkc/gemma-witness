@@ -7,7 +7,10 @@ use witness_core::{
 };
 
 fn load_spec_schema() -> serde_json::Value {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../spec/incident-schema.json");
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../spec/incident-schema.json"
+    );
     let raw = std::fs::read_to_string(path).expect("spec/incident-schema.json must be readable");
     serde_json::from_str(&raw).expect("spec/incident-schema.json must parse as JSON")
 }

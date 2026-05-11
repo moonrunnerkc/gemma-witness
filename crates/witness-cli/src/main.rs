@@ -4,12 +4,14 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use witness_inference::{
-    run_full_pipeline, InferenceClient, PipelineResult, DEFAULT_ENDPOINT,
-};
+use witness_inference::{run_full_pipeline, InferenceClient, PipelineResult, DEFAULT_ENDPOINT};
 
 #[derive(Debug, Parser)]
-#[command(name = "witness", version, about = "Gemma.Witness command-line driver.")]
+#[command(
+    name = "witness",
+    version,
+    about = "Gemma.Witness command-line driver."
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -118,7 +120,11 @@ fn load_schema(schema_path: &PathBuf) -> anyhow::Result<serde_json::Value> {
         )
     })?;
     serde_json::from_str(&schema_raw).map_err(|source| {
-        anyhow::anyhow!("schema at {:?} did not parse as JSON: {}", schema_path, source)
+        anyhow::anyhow!(
+            "schema at {:?} did not parse as JSON: {}",
+            schema_path,
+            source
+        )
     })
 }
 

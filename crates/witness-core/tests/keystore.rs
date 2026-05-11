@@ -7,7 +7,7 @@
 use base64::Engine;
 use ed25519_dalek::{Signature, SECRET_KEY_LENGTH};
 use keyring::Entry;
-use witness_core::keystore::{KEYRING_SERVICE, KEYRING_ACCOUNT};
+use witness_core::keystore::{KEYRING_ACCOUNT, KEYRING_SERVICE};
 use witness_core::signing::{generate_signing_key, parse_public_key_pem};
 
 /// Helper: replicates `keystore::load_or_create_device_key` against a

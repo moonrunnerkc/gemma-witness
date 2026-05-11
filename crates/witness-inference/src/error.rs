@@ -12,7 +12,9 @@ pub enum InferenceError {
     },
 
     /// The sidecar returned a non-2xx HTTP status.
-    #[error("sidecar at {endpoint} returned http {status}: {body}. inspect evidence/.../sidecar.log.")]
+    #[error(
+        "sidecar at {endpoint} returned http {status}: {body}. inspect evidence/.../sidecar.log."
+    )]
     BadStatus {
         endpoint: String,
         status: u16,
@@ -41,10 +43,7 @@ pub enum InferenceError {
 
     /// The model produced output that did not validate against the schema after every retry.
     #[error("model output failed schema validation after {attempts} attempt(s). last error: {last_error}. iterate the prompt or relax the schema.")]
-    SchemaInvalid {
-        attempts: u32,
-        last_error: String,
-    },
+    SchemaInvalid { attempts: u32, last_error: String },
 
     /// The schema passed by the caller did not compile.
     #[error("provided JSON Schema did not compile: {detail}. validate the schema with `jq` and a schema linter.")]
@@ -61,6 +60,8 @@ pub enum InferenceError {
 
     /// The model returned a string that could not be parsed as the expected
     /// verdict literal. The raw output is preserved for the caller to log.
-    #[error("verdict pass did not return a recognised label: {detail}. raw model content: {raw:?}.")]
+    #[error(
+        "verdict pass did not return a recognised label: {detail}. raw model content: {raw:?}."
+    )]
     BadVerdict { raw: String, detail: String },
 }

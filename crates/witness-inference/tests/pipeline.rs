@@ -112,8 +112,9 @@ fn run_scenario(inputs: &ScenarioInputs, schema: &Value) {
     );
 
     // (d) reasoning-trace hash matches direct SHA-256 of the trace bytes
-    let expected_trace_hash =
-        hex::encode(Sha256::digest(result.consistency.reasoning_trace.as_bytes()));
+    let expected_trace_hash = hex::encode(Sha256::digest(
+        result.consistency.reasoning_trace.as_bytes(),
+    ));
     assert_eq!(
         expected_trace_hash, result.consistency.reasoning_trace_sha256_hex,
         "scenario {}: reasoning-trace hash mismatch",
@@ -137,7 +138,8 @@ fn run_scenario(inputs: &ScenarioInputs, schema: &Value) {
         assert!(
             !analysis.description.trim().is_empty(),
             "scenario {}: image description was empty for {:?}",
-            inputs.label, path
+            inputs.label,
+            path
         );
     }
 

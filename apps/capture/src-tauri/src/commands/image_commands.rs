@@ -65,8 +65,7 @@ pub async fn pick_images_cmd(
         accepted.push(path);
     }
 
-    let display_paths: Vec<String> =
-        accepted.iter().map(|p| p.display().to_string()).collect();
+    let display_paths: Vec<String> = accepted.iter().map(|p| p.display().to_string()).collect();
 
     {
         let mut guard = state.lock().await;

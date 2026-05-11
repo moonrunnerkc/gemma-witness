@@ -18,7 +18,9 @@ use witness_core::manifest::{
     CaptureEnvironment, ConsistencyLabel, ConsistencyVerdict, ModelFingerprint,
 };
 use witness_core::signing::{encode_public_key_pem, generate_signing_key, key_id};
-use witness_core::{verify_bundle, BundleSigner, EvidenceKind, EvidenceReference, WitnessCoreError};
+use witness_core::{
+    verify_bundle, BundleSigner, EvidenceKind, EvidenceReference, WitnessCoreError,
+};
 use witness_inference::{run_full_pipeline, DEFAULT_ENDPOINT};
 
 struct EphemeralSigner {

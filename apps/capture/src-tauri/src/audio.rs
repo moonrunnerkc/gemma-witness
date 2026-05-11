@@ -189,12 +189,9 @@ impl RecordingStopper {
     /// Stop the stream, flush the WAV writer, and return the duration in ms.
     pub fn finish(self) -> Result<RecordingSummary, AppError> {
         self.stop_flag.store(true, Ordering::Relaxed);
-        let mut guard = self
-            .writer
-            .lock()
-            .map_err(|_| AppError::AudioStream {
-                detail: "WAV writer mutex was poisoned".to_string(),
-            })?;
+        let mut guard = self.writer.lock().map_err(|_| AppError::AudioStream {
+            detail: "WAV writer mutex was poisoned".to_string(),
+        })?;
         if let Some(writer) = guard.take() {
             writer.finalize().map_err(|err| AppError::AudioStream {
                 detail: format!("finalize WAV: {err}"),

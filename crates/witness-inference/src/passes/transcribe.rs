@@ -40,14 +40,14 @@ pub async fn transcribe(
     audio_path: &Path,
     endpoint: &str,
 ) -> Result<TranscribeOutcome, InferenceError> {
-    let canonical: PathBuf =
-        audio_path
-            .canonicalize()
-            .map_err(|source| InferenceError::Io {
-                path: audio_path.display().to_string(),
-                detail: "could not canonicalize audio path. confirm the file exists and is readable.".to_string(),
-                source,
-            })?;
+    let canonical: PathBuf = audio_path
+        .canonicalize()
+        .map_err(|source| InferenceError::Io {
+            path: audio_path.display().to_string(),
+            detail: "could not canonicalize audio path. confirm the file exists and is readable."
+                .to_string(),
+            source,
+        })?;
     let bytes = std::fs::read(&canonical).map_err(|source| InferenceError::Io {
         path: canonical.display().to_string(),
         detail: "could not read audio bytes. confirm read permissions.".to_string(),

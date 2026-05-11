@@ -40,15 +40,15 @@ pub(crate) async fn post_chat(
     body: &Value,
 ) -> Result<Value, InferenceError> {
     let url = format!("{}/v1/chat/completions", endpoint.trim_end_matches('/'));
-    let response = http
-        .post(&url)
-        .json(body)
-        .send()
-        .await
-        .map_err(|source| InferenceError::Transport {
-            endpoint: endpoint.to_string(),
-            source,
-        })?;
+    let response =
+        http.post(&url)
+            .json(body)
+            .send()
+            .await
+            .map_err(|source| InferenceError::Transport {
+                endpoint: endpoint.to_string(),
+                source,
+            })?;
     let status = response.status();
     let bytes = response
         .bytes()
