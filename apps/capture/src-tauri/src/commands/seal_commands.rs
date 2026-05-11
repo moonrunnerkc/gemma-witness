@@ -16,7 +16,7 @@ use crate::state::SharedState;
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SealedBundle {
     pub bundle_id: String,
@@ -33,6 +33,7 @@ impl BundleSigner for KeystoreSigner {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn seal_bundle_cmd(state: State<'_, SharedState>) -> Result<SealedBundle, AppError> {
     let (audio_path, image_paths, snapshot, data_dir) = {
         let guard = state.lock().await;

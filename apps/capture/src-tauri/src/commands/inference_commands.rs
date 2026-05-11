@@ -7,19 +7,21 @@ use witness_inference::run_full_pipeline_default;
 use crate::error::AppError;
 use crate::state::{PipelineSnapshot, SharedState};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct InferenceSummary {
     pub transcript: String,
-    pub structured_summary: String,
+    pub narrative_summary: String,
+    pub structured_report_json: String,
     pub consistency_verdict: String,
     pub consistency_reason: String,
     pub image_descriptions: Vec<String>,
-    pub total_latency_ms: u128,
+    pub total_latency_ms: u64,
     pub reasoning_trace_path: String,
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn run_inference_cmd(
     state: State<'_, SharedState>,
 ) -> Result<InferenceSummary, AppError> {
@@ -72,16 +74,18 @@ pub async fn run_inference_cmd(
         .iter()
         .map(|i| i.description.clone())
         .collect();
-    let structured_summary = serde_json::to_string_pretty(&pipeline.structure.report)
+    let narrative_summary = pipeline.structure.report.narrative_summary.clone();
+    let structured_report_json = serde_json::to_string_pretty(&pipeline.structure.report)
         .unwrap_or_else(|_| "<unable to render report>".to_string());
 
     let summary = InferenceSummary {
         transcript: pipeline.transcribe.transcript.clone(),
-        structured_summary,
+        narrative_summary,
+        structured_report_json,
         consistency_verdict: pipeline.consistency.verdict.clone(),
         consistency_reason: pipeline.consistency.reason.clone(),
         image_descriptions: image_descriptions.clone(),
-        total_latency_ms: pipeline.total_latency_ms,
+        total_latency_ms: pipeline.total_latency_ms as u64,
         reasoning_trace_path: reasoning_path.display().to_string(),
     };
 

@@ -9,6 +9,7 @@ use crate::state::SharedState;
 /// Ensure a device key exists in the OS keychain. Returns the lowercase
 /// hex SHA-256 of the raw public key (the key id used inside manifests).
 #[tauri::command]
+#[specta::specta]
 pub async fn initialize_device(
     app: AppHandle,
     state: State<'_, SharedState>,

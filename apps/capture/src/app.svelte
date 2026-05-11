@@ -1,23 +1,18 @@
 <script lang="ts">
   import {
-    initializeDevice,
-    pickImages,
-    runInference,
-    sealBundle,
-    startRecording,
-    stopRecording,
+    commands,
+    type RecordingFinished,
     type InferenceSummary,
-    type RecordingResult,
-    type SealResult
-  } from "./lib/tauri-bindings";
+    type SealedBundle
+  } from "./bindings";
 
   let phase: "idle" | "recording" | "ready" | "running" | "reviewed" | "sealed" | "error" =
     $state("idle");
   let deviceKeyId: string | null = $state(null);
-  let recording: RecordingResult | null = $state(null);
+  let recording: RecordingFinished | null = $state(null);
   let imagePaths: readonly string[] = $state([]);
   let summary: InferenceSummary | null = $state(null);
-  let sealed: SealResult | null = $state(null);
+  let sealed: SealedBundle | null = $state(null);
   let errorMessage: string | null = $state(null);
 
   function reportError(err: unknown): void {
@@ -27,7 +22,7 @@
 
   async function handleInit(): Promise<void> {
     try {
-      deviceKeyId = await initializeDevice();
+      deviceKeyId = await commands.initialize_device();
     } catch (err: unknown) {
       reportError(err);
     }
@@ -36,12 +31,12 @@
   async function handleRecord(): Promise<void> {
     try {
       if (phase === "recording") {
-        const result = await stopRecording();
+        const result = await commands.stop_recording_cmd();
         recording = result;
         phase = imagePaths.length > 0 ? "ready" : "idle";
         return;
       }
-      await startRecording();
+      await commands.start_recording_cmd();
       phase = "recording";
     } catch (err: unknown) {
       reportError(err);
@@ -50,8 +45,8 @@
 
   async function handlePickImages(): Promise<void> {
     try {
-      const paths = await pickImages();
-      imagePaths = paths;
+      const picked = await commands.pick_images_cmd();
+      imagePaths = picked.paths;
       if (recording !== null) {
         phase = "ready";
       }
@@ -66,7 +61,7 @@
     }
     phase = "running";
     try {
-      summary = await runInference(recording.path, imagePaths);
+      summary = await commands.run_inference_cmd();
       phase = "reviewed";
     } catch (err: unknown) {
       reportError(err);
@@ -75,7 +70,7 @@
 
   async function handleSeal(): Promise<void> {
     try {
-      sealed = await sealBundle();
+      sealed = await commands.seal_bundle_cmd();
       phase = "sealed";
     } catch (err: unknown) {
       reportError(err);
@@ -116,10 +111,10 @@
   {#if summary !== null}
     <section class="summary">
       <h2>review</h2>
-      <p><strong>narrative:</strong> {summary.narrative_summary}</p>
+      <p><strong>narrative:</strong> {summary.narrativeSummary}</p>
       <p>
         <strong>consistency:</strong>
-        {summary.consistency_verdict} - {summary.consistency_reason}
+        {summary.consistencyVerdict} - {summary.consistencyReason}
       </p>
       <details>
         <summary>transcript</summary>
@@ -127,7 +122,7 @@
       </details>
       <details>
         <summary>structured report</summary>
-        <pre>{summary.structured_report_json}</pre>
+        <pre>{summary.structuredReportJson}</pre>
       </details>
     </section>
   {/if}
@@ -135,8 +130,8 @@
   {#if sealed !== null}
     <section class="sealed">
       <h2>sealed</h2>
-      <p>bundle id: <code>{sealed.bundle_id}</code></p>
-      <p>path: <code>{sealed.bundle_path}</code></p>
+      <p>bundle id: <code>{sealed.bundleId}</code></p>
+      <p>path: <code>{sealed.path}</code></p>
     </section>
   {/if}
 

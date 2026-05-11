@@ -4,7 +4,7 @@ use serde::{Serialize, Serializer};
 
 /// Application-level error. `serde::Serialize` flattens the variant into a
 /// stable string so the frontend can branch on it.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, specta::Type)]
 pub enum AppError {
     #[error("no audio input device found: {detail}. confirm a microphone is connected and the OS has granted mic access to Gemma.Witness.")]
     NoAudioDevice { detail: String },

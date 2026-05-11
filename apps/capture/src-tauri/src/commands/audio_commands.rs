@@ -9,7 +9,7 @@ use crate::audio::{start_recording, MAX_DURATION_SECONDS};
 use crate::error::AppError;
 use crate::state::{CapturedAudio, RecordingHandle, SharedState};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RecordingStarted {
     pub out_path: String,
@@ -18,7 +18,7 @@ pub struct RecordingStarted {
     pub max_duration_seconds: u64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RecordingFinished {
     pub path: String,
@@ -28,6 +28,7 @@ pub struct RecordingFinished {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn start_recording_cmd(
     app: AppHandle,
     state: State<'_, SharedState>,
@@ -69,6 +70,7 @@ pub async fn start_recording_cmd(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn stop_recording_cmd(
     state: State<'_, SharedState>,
 ) -> Result<RecordingFinished, AppError> {

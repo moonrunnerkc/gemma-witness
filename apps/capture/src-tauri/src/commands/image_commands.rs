@@ -16,7 +16,7 @@ const MAX_FILE_BYTES: u64 = 10 * 1024 * 1024;
 /// Maximum number of images per call.
 const MAX_FILES: usize = 4;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PickedImages {
     pub paths: Vec<String>,
@@ -24,6 +24,7 @@ pub struct PickedImages {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn pick_images_cmd(
     app: tauri::AppHandle,
     state: State<'_, SharedState>,
