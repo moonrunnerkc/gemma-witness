@@ -1,8 +1,10 @@
-//! HTTP client for the local OpenAI-compatible inference sidecar.
+//! HTTP client for the local OpenAI-compatible inference sidecar, plus the
+//! per-pass modules that compose into a full multimodal pipeline.
 
 mod client;
 mod error;
 mod http;
+pub mod passes;
 mod response;
 
 pub use client::{
@@ -11,3 +13,4 @@ pub use client::{
 };
 pub use error::InferenceError;
 pub use http::{DEFAULT_ENDPOINT, DEFAULT_MODEL};
+pub use passes::transcribe::{transcribe, TranscribeOutcome};
