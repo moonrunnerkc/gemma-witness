@@ -1,0 +1,31 @@
+# Gemma.Witness: Offline Multimodal Evidence Capture with Verifiable AI Reasoning
+
+Civic accountability work depends on evidence that survives scrutiny. Today, that evidence is usually a phone photo or a voice memo: easy to fake, hard to verify, and impossible to audit for the AI model that processed it. Gemma.Witness closes the loop. It is a Tauri 2 desktop app that records audio, accepts images, runs Google Gemma 4 E4B entirely on-device, and emits a signed `.witness` bundle. A static HTML verifier validates that bundle in any browser, with no server, no cloud, and no trust in the capture device after the fact.
+
+The core problem is chain of custody at the AI layer. Existing provenance tools hash the file and sign it, but they say nothing about what a model claimed when it analyzed the file. If an offline model hallucinates a transcript or mislabels an image, the signer certifies garbage. Gemma.Witness binds the model's reasoning trace, the inputs it consumed, the model's own fingerprint, and a device-bound Ed25519 signature into one artifact. Tamper with any layer and the verifier shows exactly what broke.
+
+## Approach
+
+Gemma 4 E4B is the inference engine. It is one of the only Gemma 4 variants with native audio input, and it runs in roughly 5 GB of RAM at 4-bit quantization, fitting a modern laptop or a Raspberry Pi 5. The capture app drives a four-pass pipeline on every recording. Pass 1 transcribes the audio and structures the result into an incident report via Gemma 4's native function calling. Pass 2 sends each attached image through the model for an independent visual description. Pass 3 feeds the transcript, structured report, and image descriptions back into the model with thinking mode enabled, producing a consistency verdict and a verbatim reasoning trace. Pass 4 generates a human-readable summary for review before sealing.
+
+The bundle format is a ZIP archive with deterministic ordering and uncompressed entries. It contains a JSON manifest, a detached Ed25519 signature, the device public key, the raw audio WAV, the images as captured, and the reasoning trace as plain text. Every asset is referenced by SHA-256 of its raw bytes. The signature covers the manifest serialized with RFC 8785 JSON Canonicalization Scheme, so key reordering inside the ZIP does not break verification. Private keys live in the OS keychain and never leave it; signing happens in Rust via `ed25519-dalek` with a key handle, not an exported seed.
+
+The verifier is a single HTML file bundled by esbuild with inlined `@noble/ed25519`, `@noble/hashes`, `fflate`, and `canonicalize`. Drag a `.witness` file onto the page and the verifier extracts the ZIP, recomputes every hash, canonicalizes the manifest, checks the signature against the embedded public key, and compares the model fingerprint against a shipped allowlist. Three rows are shown: signature valid, assets untampered, model fingerprint known. If any fail, the row turns red and names the exact failure.
+
+## Architecture
+
+The stack splits into three layers. The capture app is a Tauri 2 shell with a Svelte 5 frontend and a Rust backend. Audio is captured through `cpal` directly into a 16 kHz mono WAV capped at 30 seconds. Images come through the Tauri `dialog` plugin with extension and size validation. The Rust side talks to a local OpenAI-compatible sidecar: `mlx_vlm.server` on Apple Silicon for the hackathon demo, with the same HTTP surface exposed later by `mistralrs` for cross-platform shipping. The inference crate is an async HTTP client; swapping backends is a deployment-time choice, not a refactor.
+
+The Rust workspace crates are `witness-core` for manifest types, JCS canonicalization, SHA-256 hashing, ZIP I/O, signing, and verification; `witness-inference` for the sidecar client and four-pass pipeline; `witness-cli` for headless fixture-driven runs; and `witness-eval` for scenario scoring. The verifier lives in `apps/verifier` and builds to a single `dist/verify.html` file under 30 KB.
+
+## Novelty
+
+Adjacent projects cover pieces of this but not the combination. ProofMode hashes and signs photos on Android, but it is photo-only, model-agnostic, and produces no reasoning trace. eyeWitness to Atrocities bundles media for the International Criminal Court with metadata and chain-of-custody logs, but it does not use an on-device LLM to analyze or cross-check the evidence, and it does not ship a public verifier that runs without a server. C2PA defines the manifest and signature standards that Gemma.Witness aligns with, but C2PA does not specify how to embed a model's thinking trace or a consistency verdict as signed assertions. CommitLLM provides cryptographic receipts for hosted API inference, which is the opposite of offline operation and unsuitable for field workers without reliable connectivity.
+
+Gemma.Witness is the only system that combines multimodal on-device AI reasoning, a thinking-channel audit trail, audio-image cross-consistency, and a zero-server static verifier into one artifact. The novelty is not any one of those pieces; it is the binding.
+
+## Limitations
+
+Device keys are trust-on-first-use with no CA or formal attestation. A determined attacker who controls the capture device can still forge inputs before they reach the microphone or camera. Hardware attestation via TPM or TEE would close that gap and is reserved for a v2. The demo runs on Apple Silicon via MLX; Linux and Windows binaries remain future work through the `mistralrs` path. The verifier's known-fingerprint list is currently seeded from a fixture bundle and must be independently sourced from the published `.safetensors` files for production trust.
+
+The repository is open source under the MIT license. Build instructions, the full spec, and the end-to-end test suite are at the repo root.
