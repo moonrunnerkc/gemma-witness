@@ -27,3 +27,7 @@ sidecar.log
 
 # Local model caches (HF cache lives in ~/.cache/huggingface by default)
 inference/mlx-sidecar/models/
+
+# Tauri generated
+apps/capture/src-tauri/gen/
+apps/capture/dist/

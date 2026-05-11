@@ -5,6 +5,7 @@ members = [
     "crates/witness-inference",
     "crates/witness-cli",
     "crates/witness-eval",
+    "apps/capture/src-tauri",
 ]
 
 [workspace.package]
@@ -26,3 +27,13 @@ clap = { version = "4.5", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+ed25519-dalek = { version = "2.1", features = ["pem", "rand_core"] }
+rand = "0.8"
+rand_core = "0.6"
+serde_jcs = "0.1"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+keyring = "3.6"
+uuid = { version = "1.10", features = ["v4", "serde"] }

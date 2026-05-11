@@ -1,0 +1,32 @@
+[package]
+name = "gemma-witness-capture"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+
+[lib]
+name = "gemma_witness_capture_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+witness-core = { path = "../../../crates/witness-core" }
+witness-inference = { path = "../../../crates/witness-inference" }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+thiserror = "1"
+chrono = { version = "0.4", features = ["serde"] }
+cpal = "0.15"
+hound = "3.5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ed25519-dalek = "2.1"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
