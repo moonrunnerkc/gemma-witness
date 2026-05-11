@@ -1,0 +1,17 @@
+{
+  "theme": "construction-site narration with matching photos",
+  "audio_seconds_approx": 25,
+  "image_count": 2,
+  "expected_incident_type_in": ["safety_hazard", "other"],
+  "expected_severity_max": 3,
+  "expected_verdict_in": ["consistent", "partially-consistent"],
+  "required_fields_populated": [
+    "timestamp",
+    "location",
+    "incident_type",
+    "narrative_summary",
+    "severity",
+    "evidence_references"
+  ],
+  "notes": "Audio describes workers, excavator, rebar, and a safety notice; images depict the same scene. Verdict should not be `inconsistent`."
+}

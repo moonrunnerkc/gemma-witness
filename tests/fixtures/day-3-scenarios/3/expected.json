@@ -1,0 +1,17 @@
+{
+  "theme": "deliberate mismatch: kitchen gas-leak audio with parking-lot images",
+  "audio_seconds_approx": 19,
+  "image_count": 2,
+  "expected_incident_type_in": ["safety_hazard", "other"],
+  "expected_severity_max": 5,
+  "expected_verdict_in": ["inconsistent", "partially-consistent"],
+  "required_fields_populated": [
+    "timestamp",
+    "location",
+    "incident_type",
+    "narrative_summary",
+    "severity",
+    "evidence_references"
+  ],
+  "notes": "Audio narrates a residential kitchen gas hazard; images show an exterior parking lot. The consistency pass should flag this; `inconsistent` is the strong target, `partially-consistent` is acceptable since the model occasionally hedges."
+}

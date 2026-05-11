@@ -1,0 +1,17 @@
+{
+  "theme": "creek observation",
+  "audio_seconds_approx": 19,
+  "image_count": 1,
+  "expected_incident_type_in": ["environmental", "other"],
+  "expected_severity_max": 3,
+  "expected_verdict_in": ["consistent", "partially-consistent"],
+  "required_fields_populated": [
+    "timestamp",
+    "location",
+    "incident_type",
+    "narrative_summary",
+    "severity",
+    "evidence_references"
+  ],
+  "notes": "Benign creek observation with matching photo. No pollution claimed in either audio or image."
+}
