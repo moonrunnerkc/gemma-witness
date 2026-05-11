@@ -37,9 +37,9 @@ What's done:
 
 What's next:
 
-- [ ] Cross-platform inference path via mistralrs so the capture app ships beyond Apple Silicon
-- [ ] Frontend polish, generated Tauri bindings (`tauri-specta`) replacing the hand-written typing layer, packaging
-- [ ] CI coverage reporting (`cargo-tarpaulin`)
+- [x] Cross-platform inference path via mistralrs so the capture app ships beyond Apple Silicon
+- [x] Frontend polish, generated Tauri bindings (`tauri-specta`) replacing the hand-written typing layer, packaging
+- [x] CI coverage reporting (`cargo-tarpaulin`)
 
 ## Repository layout
 
