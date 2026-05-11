@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.uv/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Rust
+target/
+Cargo.lock.bak
+
+# Editor
+.vscode/
+.idea/
+
+# Logs and runtime artifacts (gate evidence under evidence/ is committed)
+*.pid
+sidecar.log
+*.tmp
+
+# Local model caches (HF cache lives in ~/.cache/huggingface by default)
+inference/mlx-sidecar/models/
