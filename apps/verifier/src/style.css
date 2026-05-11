@@ -1,0 +1,79 @@
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  margin: 0;
+  padding: 1rem;
+  background: #f5f5f5;
+  color: #111;
+}
+
+h1 {
+  font-size: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.drop-zone {
+  border: 2px dashed #888;
+  border-radius: 0.5rem;
+  padding: 2rem;
+  text-align: center;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.drop-zone.drag-over {
+  border-color: #111;
+  background: #fafafa;
+}
+
+.results {
+  margin-top: 1rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-radius: 0.375rem;
+  background: #fff;
+  margin-bottom: 0.5rem;
+  border-left: 4px solid #ccc;
+}
+
+.row.pending {
+  border-left-color: #888;
+}
+
+.row.pass {
+  border-left-color: #16a34a;
+}
+
+.row.fail {
+  border-left-color: #dc2626;
+}
+
+.row-name {
+  font-weight: 600;
+}
+
+.row-status {
+  font-size: 0.875rem;
+}
+
+.drilldown {
+  font-size: 0.8rem;
+  color: #555;
+  margin-top: 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  width: 100%;
+}
+
+.row.fail .drilldown {
+  color: #7f1d1d;
+}
+
+.hidden {
+  display: none;
+}
