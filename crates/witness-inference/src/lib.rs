@@ -13,4 +13,7 @@ pub use client::{
 };
 pub use error::InferenceError;
 pub use http::{DEFAULT_ENDPOINT, DEFAULT_MODEL};
+pub use passes::analyze_image::{
+    analyze_image, analyze_image_with_budget, ImageAnalysis, DEFAULT_VISUAL_TOKEN_BUDGET,
+};
 pub use passes::transcribe::{transcribe, TranscribeOutcome};
