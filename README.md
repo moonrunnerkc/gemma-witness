@@ -6,16 +6,16 @@ Gemma.Witness records audio, accepts images, runs Gemma 4 E4B locally through an
 
 Three components live in this repo:
 
-- `apps/capture` — Tauri 2 desktop app (Svelte 5 + TypeScript 5 frontend, Rust backend)
-- `apps/verifier` — single-file static HTML verifier (work in progress)
-- `crates/witness-core` — Rust library: manifest, canonicalization, hashing, Ed25519 signing, ZIP bundle I/O, OS-keychain device keys, round-trip verifier
+- `apps/capture`: Tauri 2 desktop app (Svelte 5 + TypeScript 5 frontend, Rust backend)
+- `apps/verifier`: single-file static HTML verifier (complete and working)
+- `crates/witness-core`: Rust library: manifest, canonicalization, hashing, Ed25519 signing, ZIP bundle I/O, OS-keychain device keys, round-trip verifier
 
 Plus:
 
-- `crates/witness-inference` — typed async HTTP client for the local OpenAI-compatible sidecar; runs the four-pass pipeline (transcribe, structure, per-image analysis, consistency check with thinking-mode reasoning)
-- `crates/witness-cli` — headless CLI that drives the full pipeline against fixtures
-- `inference/mlx-sidecar` — `mlx_vlm.server` launcher and a pinned model fingerprint
-- `spec/` — manifest schema, incident-report schema, bundle-format document
+- `crates/witness-inference`: typed async HTTP client for the local OpenAI-compatible sidecar; runs the four-pass pipeline (transcribe, structure, per-image analysis, consistency check with thinking-mode reasoning)
+- `crates/witness-cli`: headless CLI that drives the full pipeline against fixtures
+- `inference/mlx-sidecar`: `mlx_vlm.server` launcher and a pinned model fingerprint
+- `spec/`: manifest schema, incident-report schema, bundle-format document
 
 ## Status
 
@@ -33,13 +33,13 @@ What's done:
 - [x] `witness-core` types, JCS canonicalization, SHA-256 asset hashing, Ed25519 signing, deterministic `.witness` ZIP, round-trip verifier, OS-keychain device-key handling
 - [x] Capture-app Tauri commands: device init, audio record/stop (cpal, 16 kHz mono, 30 s cap), image picker (jpg/jpeg/png, 10 MB, 4 max), full-pipeline inference, seal bundle
 - [x] Minimum-viable Svelte 5 UI wired to those commands
+- [x] Static HTML verifier with zero external network calls: drag-and-drop bundle validation, signature verification via `@noble/ed25519`, asset hash recomputation via `@noble/hashes`, ZIP extraction via `fflate`, JCS canonicalization via `canonicalize`
 
 What's next:
 
-- [ ] Static HTML verifier with WASM crypto (`@noble/ed25519`, `@noble/hashes`, JCS canonicalization, `fflate` for ZIP), routed on `manifest_version`, validating against `known-fingerprints.json`
 - [ ] Cross-platform inference path via mistralrs so the capture app ships beyond Apple Silicon
 - [ ] Frontend polish, generated Tauri bindings (`tauri-specta`) replacing the hand-written typing layer, packaging
-- [ ] CI coverage (currently tests are run locally; `cargo-tarpaulin` reporting is not yet wired up)
+- [ ] CI coverage reporting (`cargo-tarpaulin`)
 
 ## Repository layout
 
@@ -49,7 +49,7 @@ gemma-witness/
 │   ├── capture/                  Tauri desktop app
 │   │   ├── src/                  Svelte 5 + TypeScript frontend
 │   │   └── src-tauri/            Rust backend, cpal audio, plugin-dialog images
-│   └── verifier/                 Static HTML verifier (in progress)
+│   └── verifier/                 Static HTML verifier (complete)
 ├── crates/
 │   ├── witness-core/             Manifest, hashing, signing, keystore, bundle I/O, verifier
 │   ├── witness-cli/              Headless pipeline runner
@@ -88,6 +88,12 @@ cargo test --workspace -- --test-threads=1
 # the headless end-to-end (seal + verify + tamper) against the live sidecar
 cargo test -p witness-core --test day-4-e2e -- --nocapture
 
+# build the static verifier HTML file
+cd apps/verifier && pnpm build
+
+# run the verifier JS end-to-end tests against the fixture bundle
+cd apps/verifier && npx tsx tests/e2e.test.ts
+
 # lint
 cargo clippy --workspace --all-targets -- -D warnings
 pnpm lint
@@ -125,4 +131,4 @@ See `CLAUDE.md` for full engineering standards and `.github/copilot-instructions
 
 ## License
 
-Apache-2.0.
+MIT.
