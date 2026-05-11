@@ -37,6 +37,37 @@ jobs:
         env:
           RUST_BACKTRACE: 1
 
+  rust-coverage:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-tarpaulin
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-tarpaulin
+
+      - name: Generate coverage report
+        run: cargo tarpaulin --workspace --out Html --out Xml -- --test-threads=1
+        env:
+          RUST_BACKTRACE: 1
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-coverage
+          path: |
+            tarpaulin-report.html
+            cobertura.xml
+
   verifier-js:
     runs-on: ubuntu-latest
     steps:
