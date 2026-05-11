@@ -1,0 +1,10 @@
+mlx-vlm==0.5.0
+mlx==0.31.2
+mlx-audio==0.4.3
+mlx-lm==0.31.3
+torchvision==0.26.0
+transformers==5.8.0
+fastapi==0.136.1
+uvicorn==0.46.0
+requests==2.33.1
+miniaudio==1.71

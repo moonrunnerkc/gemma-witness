@@ -1,0 +1,15 @@
+Fetching 8 files:   0%|          | 0/8 [00:00<?, ?it/s]Fetching 8 files: 100%|██████████| 8/8 [00:00<00:00, 39429.41it/s]
+/Users/brad/projects/gemma-witness/inference/mlx-sidecar/.venv/lib/python3.13/site-packages/transformers/audio_utils.py:549: UserWarning: At least one mel filter has all zero values. The value for `num_mel_filters` (128) may be set too high. Or, the value for `num_frequency_bins` (257) may be set too low.
+  warnings.warn(
+==========
+Files: ['tests/fixtures/day1-sample.wav'] 
+
+Prompt: <bos><|turn>user
+Transcribe this audio<|audio|><turn|>
+<|turn>model
+
+The witness arrived at the corner of Main Street and Oak Avenue at 4:47 in the afternoon on Tuesday, October 14th, 2025. The sky was overcast and a light rain had begun to fall just before the incident occurred.
+==========
+Prompt: 353 tokens, 127.724 tokens-per-sec
+Generation: 55 tokens, 130.076 tokens-per-sec
+Peak memory: 5.996 GB
