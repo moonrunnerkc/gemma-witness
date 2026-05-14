@@ -16,7 +16,7 @@ pub struct InferenceSummary {
     pub consistency_verdict: String,
     pub consistency_reason: String,
     pub image_descriptions: Vec<String>,
-    pub total_latency_ms: u64,
+    pub total_latency_ms: u32,
     pub reasoning_trace_path: String,
 }
 
@@ -85,7 +85,7 @@ pub async fn run_inference_cmd(
         consistency_verdict: pipeline.consistency.verdict.clone(),
         consistency_reason: pipeline.consistency.reason.clone(),
         image_descriptions: image_descriptions.clone(),
-        total_latency_ms: pipeline.total_latency_ms as u64,
+        total_latency_ms: u32::try_from(pipeline.total_latency_ms).unwrap_or(u32::MAX),
         reasoning_trace_path: reasoning_path.display().to_string(),
     };
 

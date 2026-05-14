@@ -20,7 +20,7 @@ const MAX_FILES: usize = 4;
 #[serde(rename_all = "camelCase")]
 pub struct PickedImages {
     pub paths: Vec<String>,
-    pub count: usize,
+    pub count: u32,
 }
 
 #[tauri::command]
@@ -74,7 +74,7 @@ pub async fn pick_images_cmd(
     }
 
     Ok(PickedImages {
-        count: display_paths.len(),
+        count: u32::try_from(display_paths.len()).unwrap_or(u32::MAX),
         paths: display_paths,
     })
 }

@@ -15,14 +15,14 @@ pub struct RecordingStarted {
     pub out_path: String,
     pub sample_rate_hz: u32,
     pub channels: u16,
-    pub max_duration_seconds: u64,
+    pub max_duration_seconds: u32,
 }
 
 #[derive(Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RecordingFinished {
     pub path: String,
-    pub duration_ms: u64,
+    pub duration_ms: u32,
     pub sample_rate_hz: u32,
     pub channels: u16,
 }
@@ -65,7 +65,7 @@ pub async fn start_recording_cmd(
         out_path: out_path.display().to_string(),
         sample_rate_hz: config.sample_rate_hz,
         channels: config.channels,
-        max_duration_seconds: MAX_DURATION_SECONDS,
+        max_duration_seconds: MAX_DURATION_SECONDS as u32,
     })
 }
 
@@ -86,7 +86,7 @@ pub async fn stop_recording_cmd(
     });
     Ok(RecordingFinished {
         path: out_path.display().to_string(),
-        duration_ms: summary.duration_ms,
+        duration_ms: u32::try_from(summary.duration_ms).unwrap_or(u32::MAX),
         sample_rate_hz: summary.sample_rate_hz,
         channels: summary.channels,
     })
