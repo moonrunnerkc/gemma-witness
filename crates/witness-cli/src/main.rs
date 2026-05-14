@@ -96,13 +96,17 @@ async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             transcript,
             endpoint,
             schema,
-        } => structure(transcript, endpoint, schema).await.map(|()| ExitCode::SUCCESS),
+        } => structure(transcript, endpoint, schema)
+            .await
+            .map(|()| ExitCode::SUCCESS),
         Command::Pipeline {
             audio,
             images,
             endpoint,
             schema,
-        } => pipeline(audio, images, endpoint, schema).await.map(|()| ExitCode::SUCCESS),
+        } => pipeline(audio, images, endpoint, schema)
+            .await
+            .map(|()| ExitCode::SUCCESS),
         Command::Verify {
             bundle,
             fingerprints,
@@ -136,7 +140,12 @@ fn verify(bundle: PathBuf, fingerprints_path: Option<PathBuf>) -> anyhow::Result
             )
         })?
         .iter()
-        .filter_map(|entry| entry.get("sha256").and_then(|s| s.as_str()).map(String::from))
+        .filter_map(|entry| {
+            entry
+                .get("sha256")
+                .and_then(|s| s.as_str())
+                .map(String::from)
+        })
         .collect();
     if known.is_empty() {
         anyhow::bail!(
