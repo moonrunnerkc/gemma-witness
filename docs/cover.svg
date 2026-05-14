@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" role="img" aria-label="Gemma.Witness: offline, multimodal, tamper-evident evidence capture">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1020"/>
+      <stop offset="55%" stop-color="#101a36"/>
+      <stop offset="100%" stop-color="#1a2548"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7dd3fc"/>
+      <stop offset="100%" stop-color="#a78bfa"/>
+    </linearGradient>
+    <linearGradient id="seal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M 48 0 L 0 0 0 48" fill="none" stroke="#1e2a52" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1280" height="360" fill="url(#bg)"/>
+  <rect width="1280" height="360" fill="url(#grid)" opacity="0.45"/>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+    <text x="64" y="92" font-size="56" font-weight="700" fill="#e5e7eb" letter-spacing="-1">
+      Gemma<tspan fill="url(#accent)">.</tspan>Witness
+    </text>
+    <text x="64" y="132" font-size="20" fill="#9ca3af">
+      offline, multimodal, tamper-evident evidence capture
+    </text>
+
+    <g transform="translate(64,180)" font-size="14" fill="#cbd5e1">
+      <rect x="0" y="0" width="184" height="34" rx="6" fill="#0f172a" stroke="#334155"/>
+      <text x="92" y="22" text-anchor="middle">Tauri 2 capture app</text>
+
+      <rect x="200" y="0" width="220" height="34" rx="6" fill="#0f172a" stroke="#334155"/>
+      <text x="310" y="22" text-anchor="middle">Local Gemma sidecar (HTTP)</text>
+
+      <rect x="436" y="0" width="200" height="34" rx="6" fill="#0f172a" stroke="#334155"/>
+      <text x="536" y="22" text-anchor="middle">.witness ZIP bundle</text>
+
+      <rect x="652" y="0" width="220" height="34" rx="6" fill="#0f172a" stroke="#334155"/>
+      <text x="762" y="22" text-anchor="middle">Static HTML verifier</text>
+
+      <g stroke="url(#accent)" stroke-width="2" fill="none">
+        <path d="M184 17 L200 17"/>
+        <path d="M420 17 L436 17"/>
+        <path d="M636 17 L652 17"/>
+      </g>
+    </g>
+
+    <g transform="translate(64,250)" font-size="13" fill="#94a3b8">
+      <text x="0" y="16">Ed25519 detached signature</text>
+      <text x="0" y="36">RFC 8785 JCS canonicalization</text>
+      <text x="0" y="56">SHA-256 over raw asset bytes</text>
+      <text x="0" y="76">Model fingerprint pinning</text>
+
+      <text x="300" y="16">OS keychain key storage</text>
+      <text x="300" y="36">Zero network calls at verify time</text>
+      <text x="300" y="56">Verifier is one self-contained HTML file</text>
+      <text x="300" y="76">All sidecars expose OpenAI-compatible HTTP</text>
+    </g>
+
+    <g transform="translate(1020,80)" filter="url(#glow)">
+      <circle cx="100" cy="100" r="92" fill="none" stroke="url(#seal)" stroke-width="2" opacity="0.6"/>
+      <circle cx="100" cy="100" r="72" fill="none" stroke="url(#seal)" stroke-width="2" opacity="0.85"/>
+      <g transform="translate(100,100)">
+        <polygon points="0,-44 38,-22 38,22 0,44 -38,22 -38,-22" fill="none" stroke="url(#seal)" stroke-width="3"/>
+        <path d="M -18 2 L -4 16 L 22 -14" fill="none" stroke="#a7f3d0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <text x="100" y="216" text-anchor="middle" font-size="12" fill="#94a3b8">signed and verifiable</text>
+    </g>
+  </g>
+</svg>
