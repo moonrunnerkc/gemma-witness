@@ -1,0 +1,10 @@
+{
+  "assets_untampered": true,
+  "bundle": "evidence/demo-2026-05-13/bundles/demo.witness",
+  "details": [],
+  "manifest_parsed": true,
+  "model_fingerprint_known": true,
+  "ok": true,
+  "signature_valid": true
+}
+witness: verify ok (signature=true, assets=true, fingerprint=true)

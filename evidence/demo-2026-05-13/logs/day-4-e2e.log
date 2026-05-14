@@ -1,0 +1,45 @@
+   Compiling getrandom v0.3.4
+   Compiling bitflags v2.11.1
+   Compiling log v0.4.29
+   Compiling tracing-core v0.1.36
+   Compiling rustix v1.1.4
+   Compiling errno v0.3.14
+   Compiling fastrand v2.4.1
+   Compiling wait-timeout v0.2.1
+   Compiling fnv v1.0.7
+   Compiling quick-error v1.2.3
+   Compiling bit-vec v0.8.0
+   Compiling unarray v0.1.4
+   Compiling zopfli v0.8.3
+   Compiling keyring v3.6.3
+   Compiling tower-http v0.6.10
+   Compiling bit-set v0.8.0
+   Compiling tracing v0.1.44
+   Compiling zip v2.4.2
+   Compiling hyper-util v0.1.20
+   Compiling rand_core v0.9.5
+   Compiling ahash v0.8.12
+   Compiling rand_xorshift v0.4.0
+   Compiling rand v0.9.4
+   Compiling rand_chacha v0.9.0
+   Compiling jsonschema v0.18.3
+   Compiling witness-core v0.1.0 (/Users/brad/projects/gemma-witness/crates/witness-core)
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.12.28
+   Compiling tempfile v3.27.0
+   Compiling rusty-fork v0.3.1
+   Compiling proptest v1.11.0
+   Compiling witness-inference v0.1.0 (/Users/brad/projects/gemma-witness/crates/witness-inference)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.52s
+     Running tests/day-4-e2e.rs (target/debug/deps/day_4_e2e-4d09f2871f0acfaa)
+
+running 1 test
+--- pipeline begin: audio="/Users/brad/projects/gemma-witness/tests/fixtures/day-3-scenarios/1/audio.wav", images=["/Users/brad/projects/gemma-witness/tests/fixtures/day-3-scenarios/1/image1.jpg", "/Users/brad/projects/gemma-witness/tests/fixtures/day-3-scenarios/1/image2.jpg"]
+--- pipeline ok: total_ms=9286, retries_pass1=0, verdict=consistent
+--- bundle sealed: id=fe6e06a1-3613-4b01-b5ac-0d20909a33fb path="/Users/brad/projects/gemma-witness/target/test-artifacts/incident-day4-1778727282.witness"
+--- verify clean: VerificationReport { manifest_parsed: true, signature_valid: true, assets_untampered: true, model_fingerprint_known: true, details: [] }
+--- tamper detected: details=["asset assets/audio.wav hash mismatch. manifest said 72e07bd6df839864ccf865770040cf57efefadc0c832a78f9b22b13e226e5eec, recomputed 05cc7329ac4cf8530c7b5659aafbcada9ac1762b6f23f5ca61a0a8a95c0a2e22"]
+test day_4_e2e_capture_seal_verify_tamper ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.39s
+

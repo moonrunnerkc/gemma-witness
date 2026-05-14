@@ -1,0 +1,14 @@
+5dd1f35b8d964160425d44509247e424a50ab1edf52b837808f54d4b0c21e840  evidence/demo-2026-05-13/bundles/demo-tampered.witness
+b14af8f576f67d74e65c90178a27c08aeddd1a22d4507256ba3102610f0d1f44  evidence/demo-2026-05-13/bundles/demo.witness
+b70dfebbe499b97f7a57280333fa36d338472e3c707a3ef84a262e83a6952303  evidence/demo-2026-05-13/journal.md
+8e7bc3734e26947c374072c41ce83dd404bdbf271fb48c7f79a1e51e6fa4688a  evidence/demo-2026-05-13/logs/cli-pipeline.json
+554acb9fbadc05261071aa0ca4b95b072863572415dbad0e3a37e5b4abf0714e  evidence/demo-2026-05-13/logs/cli-pipeline.stderr
+263ba1e3eb0317b41347aeee3ffd1af15de4c6c14e7eff47f67bc4275dd5ffa3  evidence/demo-2026-05-13/logs/cli-verify-live.json
+496809de65cabecb95abed6882058284e4f12416ce588ddd8bade7dff1fbf04b  evidence/demo-2026-05-13/logs/day-4-e2e.log
+49754d81310e76b04f53bcad4d0ef418dde02c1b0542f0a04f890bc99d41c648  evidence/demo-2026-05-13/logs/sidecar-start.log
+3fce1ff9ea547b04a421d8dec2a5ffe863acf0c944ae101aca94aa37f4e7dc88  evidence/demo-2026-05-13/logs/tauri-dev-2.log
+0ab715476a4af74fa49424a7eaf4d6dadb71a3be55db5d54fc1b6f5051635f77  evidence/demo-2026-05-13/logs/tauri-dev-3.log
+2692258cda4f3475e307d21ef4608c607723bfda12a05091a28ab9ca78e9cbe6  evidence/demo-2026-05-13/logs/tauri-dev-4.log
+d46460d93233f40fc54f969cad2e50388abea3e16de071d357f4370dd3828fa0  evidence/demo-2026-05-13/logs/tauri-dev.log
+9590299f90de97133eac26e9d8db0d0611bee5ade0177341f92b963613243f96  evidence/demo-2026-05-13/logs/v1-models.json
+c626dff7e981d0e54baaaf1000ea8c57538bf1ff1c7867e1ccaf84f435ab4fbd  evidence/demo-2026-05-13/logs/verifier-build.log

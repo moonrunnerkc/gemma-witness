@@ -1,0 +1,48 @@
+{
+  "transcribe": {
+    "transcript": "This is a witness observation recorded at the Elm Street construction site on the afternoon of October 14th, 2025. Workers are pouring concrete for a new foundation. A yellow excavator is parked next to a stack of rebar. Two workers in orange high-visibility vests and hard hats are guiding the concrete chute. The site fence has a printed safety notice attached to it. There is no obvious hazard visible at this time.",
+    "audio_sha256_hex": "72e07bd6df839864ccf865770040cf57efefadc0c832a78f9b22b13e226e5eec",
+    "audio_bytes": 796490,
+    "latency_ms": 1945
+  },
+  "structure": {
+    "report": {
+      "timestamp": "2025-10-14T14:00:00Z",
+      "location": {
+        "description": "Elm Street construction site"
+      },
+      "incident_type": "other",
+      "narrative_summary": "Workers were pouring concrete for a new foundation at the construction site.",
+      "severity": 1,
+      "evidence_references": []
+    },
+    "retries_used": 0,
+    "latency_ms": 994
+  },
+  "images": [
+    {
+      "image_path": "/Users/brad/projects/gemma-witness/tests/fixtures/day-3-scenarios/1/image1.jpg",
+      "image_sha256_hex": "6283440ad69245a5a3e475a4b439ea3b0b71754a91fb6944d9a8f0fbc0e48161",
+      "image_bytes": 14910,
+      "description": "This image depicts a stylized illustration of a yellow vehicle, possibly a truck or construction vehicle, parked outdoors. The vehicle is flanked by two figures wearing orange tops and yellow hats, suggesting a scene related to a work site or location identified as \"ELM ST SITE 14 OCT.\"",
+      "visual_token_budget": 280,
+      "latency_ms": 766
+    },
+    {
+      "image_path": "/Users/brad/projects/gemma-witness/tests/fixtures/day-3-scenarios/1/image2.jpg",
+      "image_sha256_hex": "16e6190b507f9049e0bd97f5f0791a0ccff60a0c58bdb07fbde28af490da7d23",
+      "image_bytes": 44404,
+      "description": "The image displays a bright yellow sign with a black border against a gray, gridded background. The sign prominently features the word \"DANGER\" in red, followed by the text \"HARD HAT AND VEST REQUIRED.\"",
+      "visual_token_budget": 280,
+      "latency_ms": 541
+    }
+  ],
+  "consistency": {
+    "verdict": "consistent",
+    "reason": "The images depict elements mentioned in the transcript, such as yellow machinery, orange-clad workers, and safety signage from the Elm Street site.",
+    "reasoning_trace": "Here's a thinking process to arrive at the verdict:\n\n1.  **Analyze the Transcript:**\n    *   **Setting:** Elm Street construction site, afternoon of October 14th, 2025.\n    *   **Activity:** Pouring concrete for a new foundation.\n    *   **Elements present:** Yellow excavator, stack of rebar, two workers in orange high-visibility vests and hard hats, concrete chute, site fence with a safety notice.\n    *   **Condition:** No obvious hazard visible.\n\n2.  **Analyze the Incident Report:**\n    *   **Date/Time:** 2025-10-14T14:00:00Z (Matches the general timeframe).\n    *   **Location:** Elm Street construction site (Matches).\n    *   **Summary:** Pouring concrete for a new foundation (Matches the activity).\n    *   **Severity:** 1 (Low/Minor).\n\n3.  **Analyze the Image Descriptions:**\n    *   **Image 1:** Depicts a stylized illustration of a yellow vehicle (possibly truck/construction vehicle), flanked by two figures in orange tops and yellow hats. Text mentions \"ELM ST SITE 14 OCT.\"\n    *   **Image 2:** Displays a bright yellow sign with a black border against a gray, gridded background. Prominently features \"DANGER\" in red, followed by \"HARD HAT AND VEST REQUIRED.\"\n\n4.  **Compare Transcript/Incident Report vs. Image Descriptions (Consistency Check):**\n\n    *   **Transcript elements mentioned in the images:**\n        *   Yellow vehicle (Excavator mentioned in transcript, matches \"yellow vehicle\" in Image 1).\n        *   Orange tops/high-visibility vests (Mentioned in transcript, matches \"orange tops\" in Image 1).\n        *   Hard hats (Mentioned in transcript, matches \"yellow hats\" in Image 1, and the requirement in Image 2).\n        *   Elm St Site 14 Oct (Matches the location/date context).\n\n    *   **Discrepancies/Nuances:**\n        *   The transcript describes a *live scene* with specific equipment (excavator, rebar, chute).\n        *   Image 1 describes a *stylized illustration* of a vehicle and figures, which is a slight shift from a direct observation of the scene, but the core elements (yellow vehicle, orange/yellow attire, site context) are present.\n        *   Image 2 describes a *safety sign* (\"DANGER,\" \"HARD HAT AND VEST REQUIRED\"). The transcript mentions a \"printed safety notice attached to [the] site fence,\" which aligns with the presence of safety warnings.\n\n5.  **Determine Overall Consistency:**\n    *   The images depict elements (yellow machinery, orange-clad workers, site context, safety warnings) that are directly supported by the transcript and incident report.\n    *   While the images might be illustrations or close-ups of specific items (like the sign), they do not contradict the narrative that the scene involved a construction site on that date with specific elements present.\n\n6.  **Conclusion:** The image descriptions are consistent with the evidence provided in the transcript and incident report.\n\n7.  **Final JSON Generation.** (The verdict is `consistent`).",
+    "reasoning_trace_sha256_hex": "bbbe9a4619f9e177c6725ca1731f7541a114b9079faa85092cd00cb1d25008a5",
+    "latency_ms": 6217
+  },
+  "total_latency_ms": 10518
+}

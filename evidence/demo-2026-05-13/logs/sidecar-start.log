@@ -1,0 +1,2 @@
+started mlx-vlm sidecar pid=24807 model=mlx-community/gemma-4-e4b-it-4bit host=127.0.0.1 port=8080 log=/Users/brad/projects/gemma-witness/evidence/day1/sidecar.log
+sidecar ready on http://127.0.0.1:8080

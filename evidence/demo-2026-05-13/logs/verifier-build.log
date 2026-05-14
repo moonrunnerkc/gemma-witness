@@ -1,0 +1,6 @@
+
+> gemma-witness-verifier@0.1.0 build /Users/brad/projects/gemma-witness/apps/verifier
+> node build.mjs
+
+Built dist/verify.html: 29417 bytes
+Static checks passed: no external src/href, no fetch/XHR/importScripts.

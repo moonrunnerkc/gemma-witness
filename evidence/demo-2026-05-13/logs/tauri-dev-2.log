@@ -1,0 +1,27 @@
+
+> gemma-witness-capture@0.1.0 tauri /Users/brad/projects/gemma-witness/apps/capture
+> tauri "dev"
+
+     Running BeforeDevCommand (`pnpm dev`)
+
+> gemma-witness-capture@0.1.0 dev /Users/brad/projects/gemma-witness/apps/capture
+> vite
+
+
+  VITE v5.4.21  ready in 167 ms
+
+  ➜  Local:   http://localhost:1420/
+  ➜  Network: use --host to expose
+     Running DevCommand (`cargo  run --no-default-features --color always --`)
+        Info Watching /Users/brad/projects/gemma-witness/apps/capture/src-tauri for changes...
+        Info Watching /Users/brad/projects/gemma-witness/crates/witness-core for changes...
+        Info Watching /Users/brad/projects/gemma-witness/crates/witness-inference for changes...
+[1m[92m   Compiling[0m gemma-witness-capture v0.1.0 (/Users/brad/projects/gemma-witness/apps/capture/src-tauri)
+[1m[96m    Building[0m [=======================> ] 500/502: gemma-witness-capture       [1m[96m    Building[0m [=======================> ] 501/502: gemma-witness-capture(bin)  [K[1m[92m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 2.01s
+[1m[92m     Running[0m `/Users/brad/projects/gemma-witness/target/debug/gemma-witness-capture`
+9:00:57 PM [vite] hmr update /src/app.svelte
+9:00:58 PM [vite] hmr update /src/app.svelte
+9:01:00 PM [vite] hmr update /src/app.svelte
+9:01:01 PM [vite] hmr update /src/app.svelte
+9:01:02 PM [vite] hmr update /src/app.svelte
+9:01:03 PM [vite] hmr update /src/app.svelte
