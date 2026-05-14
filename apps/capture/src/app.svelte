@@ -1,10 +1,25 @@
 <script lang="ts">
   import {
     commands,
+    type AppError,
     type RecordingFinished,
     type InferenceSummary,
     type SealedBundle
   } from "./bindings";
+
+  type Envelope<T> = { status: "ok"; data: T } | { status: "error"; error: AppError };
+
+  async function unwrap<T>(promise: Promise<Envelope<T>>): Promise<T> {
+    const result = await promise;
+    if (result.status === "error") {
+      throw new Error(
+        typeof result.error === "string"
+          ? result.error
+          : JSON.stringify(result.error)
+      );
+    }
+    return result.data;
+  }
 
   let phase: "idle" | "recording" | "ready" | "running" | "reviewed" | "sealed" | "error" =
     $state("idle");
@@ -22,7 +37,7 @@
 
   async function handleInit(): Promise<void> {
     try {
-      deviceKeyId = await commands.initialize_device();
+      deviceKeyId = await unwrap(commands.initializeDevice());
     } catch (err: unknown) {
       reportError(err);
     }
@@ -31,12 +46,12 @@
   async function handleRecord(): Promise<void> {
     try {
       if (phase === "recording") {
-        const result = await commands.stop_recording_cmd();
+        const result = await unwrap(commands.stopRecordingCmd());
         recording = result;
         phase = imagePaths.length > 0 ? "ready" : "idle";
         return;
       }
-      await commands.start_recording_cmd();
+      await unwrap(commands.startRecordingCmd());
       phase = "recording";
     } catch (err: unknown) {
       reportError(err);
@@ -45,7 +60,7 @@
 
   async function handlePickImages(): Promise<void> {
     try {
-      const picked = await commands.pick_images_cmd();
+      const picked = await unwrap(commands.pickImagesCmd());
       imagePaths = picked.paths;
       if (recording !== null) {
         phase = "ready";
@@ -61,7 +76,7 @@
     }
     phase = "running";
     try {
-      summary = await commands.run_inference_cmd();
+      summary = await unwrap(commands.runInferenceCmd());
       phase = "reviewed";
     } catch (err: unknown) {
       reportError(err);
@@ -70,7 +85,7 @@
 
   async function handleSeal(): Promise<void> {
     try {
-      sealed = await commands.seal_bundle_cmd();
+      sealed = await unwrap(commands.sealBundleCmd());
       phase = "sealed";
     } catch (err: unknown) {
       reportError(err);
