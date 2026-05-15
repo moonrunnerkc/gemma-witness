@@ -98,7 +98,12 @@ jobs:
           tool: cargo-tarpaulin
 
       - name: Generate coverage report
-        run: cargo tarpaulin --locked --workspace --out Html --out Xml -- --test-threads=1
+        # gemma-witness-capture pulls swift_rs via Tauri on macOS; tarpaulin's
+        # build path trips its Swift link step on the runner image. The
+        # capture crate is a Tauri shell whose useful coverage is integration-
+        # tested elsewhere (cross-platform-e2e + bundle-roundtrip). Coverage
+        # gates the cryptographic and serialization paths in witness-core.
+        run: cargo tarpaulin --locked --workspace --exclude gemma-witness-capture --out Html --out Xml -- --test-threads=1
         env:
           RUST_BACKTRACE: 1
 
@@ -132,7 +137,10 @@ jobs:
           tool: cargo-audit,cargo-deny
 
       - name: cargo audit
-        run: cargo audit --locked
+        # cargo-audit reads Cargo.lock directly and does not accept --locked.
+        # The lockfile is the source of truth; cargo audit fails closed on any
+        # advisory match.
+        run: cargo audit
 
       - name: cargo deny
         run: cargo deny --locked check advisories bans sources

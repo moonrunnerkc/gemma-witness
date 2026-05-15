@@ -10,11 +10,19 @@ no-default-features = false
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
+# Unmaintained != vulnerable. We only fail on unmaintained crates we own
+# directly; transitive Tauri/gtk/urlpattern deps fall outside that scope
+# until upstream cuts new releases. Yanked and real vulnerabilities still
+# block as normal.
+unmaintained = "workspace"
 ignore = []
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# In-workspace path deps (witness-core, witness-inference, etc.) have no
+# version field and are reported as wildcards. They are not third-party.
+allow-wildcard-paths = true
 deny = []
 skip = []
 skip-tree = []

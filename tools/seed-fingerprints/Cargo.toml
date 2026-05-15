@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+publish = false
 description = "Seeds inference/fingerprints/ entries from Hugging Face LFS metadata and the local model cache."
 
 [[bin]]
