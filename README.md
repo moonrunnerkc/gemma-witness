@@ -324,6 +324,14 @@ Fingerprints live in a single registry at `inference/fingerprints/`, embedded in
 
 CI now exercises the full capture-to-seal-to-verify pipeline on Linux and Windows via `witness-test-sidecar`, a hermetic OpenAI-compatible fake that returns precomputed fixture responses. No real model is required, so this runs on every push. The mlx-vlm and mistralrs paths still require Apple Silicon or a CUDA-equipped machine respectively for actual inference; that constraint is intrinsic to those backends, not to Gemma.Witness.
 
+| Backend       | macOS arm64 | Linux x86_64 | Windows x86_64 |
+| :------------ | :---------- | :----------- | :------------- |
+| mlx-vlm       | best        | not supported | not supported |
+| mistralrs     | ok          | ok (CUDA)    | ok (CUDA)      |
+| transformers  | slow        | ok           | ok             |
+
+The wire format is OpenAI-compatible HTTP, so the capture binary itself is portable; only the model backend the operator runs changes per host.
+
 ### CI scope
 
 - Hermetic e2e (Linux, Windows, macOS): capture pipeline + seal + verify + tamper detection against the fake sidecar.
