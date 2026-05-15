@@ -15,8 +15,8 @@ importers:
         specifier: ^1.5.0
         version: 1.8.0
       canonicalize:
-        specifier: ^2.0.0
-        version: 2.1.0
+        specifier: ^3.0.0
+        version: 3.0.0
       fflate:
         specifier: ^0.8.2
         version: 0.8.2
@@ -196,8 +196,9 @@ packages:
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
     engines: {node: ^14.21.3 || >=16}
 
-  canonicalize@2.1.0:
-    resolution: {integrity: sha512-F705O3xrsUtgt98j7leetNhTWPe+5S72rlL5O4jA1pKqBVQ/dT1O1D6PFxmSXvc0SUOinWS57DKx0I3CHrXJHQ==}
+  canonicalize@3.0.0:
+    resolution: {integrity: sha512-yYLfHyDMIXRyRqsKBRLX023riFLpXY2YOfdtqKXZRZy9qsfOJ9U+4F9YZL7MEzL5+ziN2x2nlBvY/Voi3EBljA==}
+    engines: {node: '>=18'}
     hasBin: true
 
   esbuild@0.27.7:
@@ -313,7 +314,7 @@ snapshots:
 
   '@noble/hashes@1.8.0': {}
 
-  canonicalize@2.1.0: {}
+  canonicalize@3.0.0: {}
 
   esbuild@0.27.7:
     optionalDependencies:
