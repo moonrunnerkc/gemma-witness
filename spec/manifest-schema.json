@@ -113,6 +113,36 @@
             "app_version": { "type": "string", "minLength": 1 },
             "captured_at": { "type": "string", "format": "date-time" }
           }
+        },
+        "gemma.witness.inference_parameters": {
+          "description": "Optional advisory assertion recording the sampling parameters used by each inference pass. Forensic, not cryptographic; verifiers display it without passing or failing on its contents.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["passes", "note"],
+          "properties": {
+            "passes": {
+              "description": "Per-pass parameters keyed by pass name (transcribe, structure_incident, analyze_image, check_consistency).",
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["temperature", "max_tokens", "prompt_sha256"],
+                "properties": {
+                  "temperature": { "type": "number", "minimum": 0 },
+                  "top_p": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "max_tokens": { "type": "integer", "minimum": 1 },
+                  "visual_token_budget": { "type": "integer", "minimum": 1 },
+                  "prompt_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+                }
+              }
+            },
+            "sampling_seed": {
+              "description": "RNG seed if pinned. Null today across every pass.",
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "note": { "type": "string", "minLength": 1 }
+          }
         }
       }
     }

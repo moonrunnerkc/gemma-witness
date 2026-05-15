@@ -19,6 +19,7 @@ pub mod verifier;
 pub use assertions::incident_report::{
     EvidenceKind, EvidenceReference, IncidentReport, IncidentType, Location, WitnessContact,
 };
+pub use assertions::inference_parameters::{InferenceParameters, PassParameters};
 pub use bundle_builder::{build_and_seal_bundle, BundleInputs, BundleSigner};
 pub use error::WitnessCoreError;
 pub use key_provider::{KeyProvider, PublicKeyHandle, SigningAlgorithm, SoftwareEd25519Provider};

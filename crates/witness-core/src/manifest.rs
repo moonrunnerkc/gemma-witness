@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::assertions::incident_report::IncidentReport;
+use crate::assertions::inference_parameters::InferenceParameters;
 
 /// Current manifest schema version.
 ///
@@ -46,6 +47,11 @@ pub struct AssetEntry {
 
 /// Namespaced assertions. Serde renames keep the wire form aligned with the
 /// `gemma.witness.*` namespace used in the spec.
+///
+/// Optional assertions are skipped on serialize when absent, so existing
+/// bundles remain byte-identical and verifiers that ignore them keep
+/// working. The matching JSON Schema lists each optional field in
+/// `properties` but not in `required`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Assertions {
     #[serde(rename = "gemma.witness.model_fingerprint")]
@@ -58,6 +64,12 @@ pub struct Assertions {
     pub consistency_verdict: ConsistencyVerdict,
     #[serde(rename = "gemma.witness.capture_environment")]
     pub capture_environment: CaptureEnvironment,
+    #[serde(
+        rename = "gemma.witness.inference_parameters",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub inference_parameters: Option<InferenceParameters>,
 }
 
 /// Identity of the model that produced the reasoning + structured report.

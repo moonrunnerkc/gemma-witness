@@ -5,3 +5,4 @@
 //! adding a new module here and wiring it into the verifier.
 
 pub mod incident_report;
+pub mod inference_parameters;

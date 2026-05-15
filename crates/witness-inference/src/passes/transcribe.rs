@@ -12,10 +12,14 @@ use sha2::{Digest, Sha256};
 use crate::error::InferenceError;
 use crate::http::{build_http_client, extract_text_content, post_chat, DEFAULT_MODEL};
 
-const DEFAULT_PROMPT: &str =
+/// Fixed instruction prompt for the transcribe pass. Public so the manifest
+/// can record SHA-256(`PROMPT`) without coupling to the pass internals.
+pub const PROMPT: &str =
     "Transcribe this audio verbatim. Output only the transcript text, no labels or quotes.";
-const DEFAULT_MAX_TOKENS: u32 = 500;
-const DEFAULT_TEMPERATURE: f32 = 0.0;
+/// Token cap on the transcribe pass. Public for manifest recording.
+pub const MAX_TOKENS: u32 = 500;
+/// Sampling temperature used by the transcribe pass. Public for manifest recording.
+pub const TEMPERATURE: f32 = 0.0;
 
 /// Result of a single transcribe pass.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -58,13 +62,13 @@ pub async fn transcribe(
 
     let body = json!({
         "model": DEFAULT_MODEL,
-        "max_tokens": DEFAULT_MAX_TOKENS,
-        "temperature": DEFAULT_TEMPERATURE,
+        "max_tokens": MAX_TOKENS,
+        "temperature": TEMPERATURE,
         "messages": [
             {
                 "role": "user",
                 "content": [
-                    {"type": "input_text", "text": DEFAULT_PROMPT},
+                    {"type": "input_text", "text": PROMPT},
                     {
                         "type": "input_audio",
                         "input_audio": {

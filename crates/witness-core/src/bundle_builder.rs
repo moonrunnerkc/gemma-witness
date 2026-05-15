@@ -13,7 +13,7 @@ use crate::manifest::{
     Assertions, AssetEntry, CaptureEnvironment, ConsistencyVerdict, Manifest, ModelFingerprint,
     ReasoningTrace, SignatureDocument, SignerInfo, MANIFEST_VERSION,
 };
-use crate::IncidentReport;
+use crate::{IncidentReport, InferenceParameters};
 
 /// In-zip layout constants.
 pub mod paths {
@@ -49,6 +49,11 @@ pub struct BundleInputs {
     /// Device public key PEM and key id.
     pub signer_public_key_pem: String,
     pub signer_key_id: String,
+    /// Optional advisory assertion describing the sampling parameters each
+    /// inference pass ran with. None today only for callers that have not
+    /// adopted the witness-inference helper yet.
+    #[allow(clippy::struct_field_names)]
+    pub inference_parameters: Option<InferenceParameters>,
 }
 
 /// A signer is anything that can produce a 64-byte Ed25519 signature over a
@@ -134,6 +139,7 @@ pub fn build_and_seal_bundle<S: BundleSigner>(
             },
             consistency_verdict: inputs.consistency.clone(),
             capture_environment: inputs.capture_environment.clone(),
+            inference_parameters: inputs.inference_parameters.clone(),
         },
     };
 

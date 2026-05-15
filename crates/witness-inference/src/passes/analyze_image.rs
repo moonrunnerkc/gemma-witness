@@ -19,9 +19,14 @@ use crate::http::{build_http_client, extract_text_content, post_chat, DEFAULT_MO
 /// Visual token budget. 280 is the Gemma 4 default per the model card and
 /// the build guide; lower to 140 trades detail for latency.
 pub const DEFAULT_VISUAL_TOKEN_BUDGET: u32 = 280;
-const DEFAULT_MAX_TOKENS: u32 = 220;
-const DEFAULT_TEMPERATURE: f32 = 0.2;
-const DEFAULT_PROMPT: &str = "Describe the contents of this image in two or three sentences. \
+/// Token cap on the analyze-image pass. Public for manifest recording.
+pub const MAX_TOKENS: u32 = 220;
+/// Sampling temperature used by the analyze-image pass. Public for manifest recording.
+pub const TEMPERATURE: f32 = 0.2;
+/// Fixed instruction prompt for the analyze-image pass. Public so the
+/// manifest can record SHA-256(`PROMPT`) without coupling to the pass
+/// internals.
+pub const PROMPT: &str = "Describe the contents of this image in two or three sentences. \
 Be concrete: name the setting, the visible objects, and any people or activity. \
 Do not speculate about audio, intent, or anything not visible.";
 
@@ -84,15 +89,15 @@ pub async fn analyze_image_with_budget(
 
     let body = json!({
         "model": DEFAULT_MODEL,
-        "max_tokens": DEFAULT_MAX_TOKENS,
-        "temperature": DEFAULT_TEMPERATURE,
+        "max_tokens": MAX_TOKENS,
+        "temperature": TEMPERATURE,
         "visual_token_budget": visual_token_budget,
         "messages": [
             {
                 "role": "user",
                 "content": [
                     {"type": "image_url", "image_url": {"url": data_url}},
-                    {"type": "text", "text": DEFAULT_PROMPT}
+                    {"type": "text", "text": PROMPT}
                 ]
             }
         ]

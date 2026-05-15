@@ -11,7 +11,9 @@ use witness_core::manifest::{
 };
 use witness_core::WitnessCoreError;
 use witness_fingerprints::FingerprintError;
-use witness_inference::{fetch_active_model_id_default, DEFAULT_ENDPOINT};
+use witness_inference::{
+    fetch_active_model_id_default, inference_parameters_snapshot, DEFAULT_ENDPOINT,
+};
 
 use crate::error::AppError;
 use crate::state::SharedState;
@@ -101,6 +103,7 @@ pub async fn seal_bundle_cmd(state: State<'_, SharedState>) -> Result<SealedBund
         },
         signer_public_key_pem: device_key.public_key_pem,
         signer_key_id: device_key.key_id,
+        inference_parameters: Some(inference_parameters_snapshot()),
     };
 
     let bundles_dir = data_dir.join("bundles");

@@ -33,9 +33,13 @@ pub const DEFAULT_TOP_P: f32 = 0.9;
 /// 3 retries is the smallest number that empirically clears occasional
 /// off-by-one severity errors without inflating per-transcript latency.
 pub const DEFAULT_MAX_RETRIES: u32 = 3;
-const DEFAULT_MAX_TOKENS: u32 = 800;
+/// Token cap on the structure-incident pass. Public for manifest recording.
+pub const DEFAULT_MAX_TOKENS: u32 = 800;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
-const SYSTEM_PROMPT: &str = "You are an evidence-extraction assistant. Given a witness transcript, \
+/// Fixed instruction prompt for the structure-incident pass. Public so the
+/// manifest can record SHA-256(`SYSTEM_PROMPT`) without coupling to the
+/// client internals.
+pub const SYSTEM_PROMPT: &str = "You are an evidence-extraction assistant. Given a witness transcript, \
 call the `record_incident` tool exactly once with the structured fields filled in from the transcript. \
 Do not invent facts. \
 \n\nStrict output rules:\

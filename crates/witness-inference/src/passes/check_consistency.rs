@@ -21,10 +21,14 @@ use crate::http::{
     build_http_client, extract_reasoning, extract_text_content, post_chat, DEFAULT_MODEL,
 };
 
-const DEFAULT_MAX_TOKENS: u32 = 1200;
-const DEFAULT_TEMPERATURE: f32 = 0.2;
+/// Token cap on the consistency pass. Public for manifest recording.
+pub const MAX_TOKENS: u32 = 1200;
+/// Sampling temperature used by the consistency pass. Public for manifest recording.
+pub const TEMPERATURE: f32 = 0.2;
 
-const SYSTEM_PROMPT: &str = "<|think|>You are a careful evidence reviewer. \
+/// Fixed instruction prompt for the consistency pass. Public so the manifest
+/// can record SHA-256(`SYSTEM_PROMPT`) without coupling to the pass internals.
+pub const SYSTEM_PROMPT: &str = "<|think|>You are a careful evidence reviewer. \
 You are given a transcript of an audio recording, a structured incident report extracted from it, \
 and short descriptions of one or more images submitted alongside the audio. \
 Decide whether the image descriptions are consistent with what the audio narrative claims. \
@@ -87,8 +91,8 @@ pub async fn check_consistency(
 
     let body = json!({
         "model": DEFAULT_MODEL,
-        "max_tokens": DEFAULT_MAX_TOKENS,
-        "temperature": DEFAULT_TEMPERATURE,
+        "max_tokens": MAX_TOKENS,
+        "temperature": TEMPERATURE,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_text}
