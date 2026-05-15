@@ -5,7 +5,7 @@
 <h1 align="center">Gemma.Witness</h1>
 
 <p align="center">
-  Offline multimodal evidence capture that emits a signed, locally verifiable bundle.
+  Offline, tamper-evident evidence capture for field journalism. Signed in your hand, verified in a browser, with no server in the loop.
 </p>
 
 <p align="center">
@@ -20,45 +20,27 @@
 
 ## Status
 
-This is a pre-release research project.
+This is a pre-release research project. The full capture and verification chain is designed to run offline, but the current implementation still has important trust and portability limitations. Read the [limitations](#current-limitations) section before relying on it for real-world evidence handling.
 
-The full capture and verification chain is designed to run offline, but the current implementation still has important trust and portability limitations. Read the [limitations](#current-limitations) section before relying on it for real-world evidence handling.
+## The use case it leads with
+
+A reporter in the field records a witness account, attaches camera-roll photos, runs a local Gemma 4 pipeline to transcribe, structure, and cross-check the inputs, then seals the result into a single `.witness` file. The file is signed by a device-held Ed25519 key. The model identity is pinned in the signature scope. The reasoning trace is captured byte-for-byte.
+
+Later, an editor, a fact-check desk, or a press-freedom organization opens a static HTML page in any browser, drags the `.witness` file in, and sees three checks resolve to green or red:
+
+- the signature over the manifest is valid
+- every asset's SHA-256 matches what the manifest claims
+- the model fingerprint is on the published known-good list
+
+No server, no account, no network. If a single byte of the audio is altered after sealing, the asset check fails and the verifier names which file and which mismatch.
+
+Where else this pattern fits, with no UI changes: labor and safety incident reports verified by a union steward, witness statements at protests verified by counsel before going into a case file, environmental observations verified by the receiving NGO. The bundle format and the verifier do not care about the framing.
 
 ## What it does
 
-Gemma.Witness records:
+The capture app records audio, accepts images, runs a local four-pass Gemma 4 pipeline (transcribe, structure, per-image analyze, cross-modal consistency check), and writes a deterministic `.witness` ZIP whose `manifest.json` is signed under RFC 8785 JCS canonicalization with the device's Ed25519 key. The manifest commits to every asset's raw-byte SHA-256, the reasoning trace, the structured incident report, the model fingerprint (model id + revision + `model.safetensors` SHA-256), and the capture environment.
 
-- audio
-- images
-- structured incident metadata
-
-It then runs a local Gemma-based multimodal pipeline that:
-
-- transcribes audio
-- structures the incident
-- analyzes images
-- checks cross-modal consistency
-
-The resulting evidence bundle includes:
-
-- captured assets
-- structured report
-- reasoning trace
-- manifest
-- signature
-- public verification key
-
-Bundles are written as deterministic `.witness` ZIP archives and signed with an Ed25519 device key stored in the operating system keychain.
-
-A separate static HTML verifier:
-
-- runs fully offline
-- validates signatures
-- recomputes hashes
-- checks bundle integrity
-- validates pinned model fingerprints
-
-No network access is required for verification.
+The verifier is a single static HTML file plus the noble crypto libraries. It opens the bundle as a ZIP in the browser, recomputes hashes, verifies the signature against the embedded public key, and confirms the model fingerprint is on the published list. CI enforces that the built verifier contains no `fetch`, `XHR`, or `importScripts` call.
 
 ## Architecture
 
