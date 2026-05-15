@@ -15,7 +15,7 @@ tauri-build = { version = "2", features = [] }
 witness-core = { path = "../../../crates/witness-core" }
 witness-inference = { path = "../../../crates/witness-inference" }
 witness-fingerprints = { path = "../../../crates/witness-fingerprints" }
-gethostname = "0.5"
+gethostname = "1.1"
 dirs = "5"
 sha2 = "0.10"
 hex = "0.4"
