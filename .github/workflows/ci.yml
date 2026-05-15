@@ -93,7 +93,7 @@ jobs:
           pnpm build
 
       - name: Install cargo-tarpaulin
-        uses: taiki-e/install-action@1b40b317f49a4a91ff7e2f3a0fe0f44f988fdc16 # v2.32.18
+        uses: taiki-e/install-action@5c256d5a578917d032b8adcd9802cfa432265631 # v2.32.18
         with:
           tool: cargo-tarpaulin
 
@@ -127,7 +127,7 @@ jobs:
           cache-bin: false
 
       - name: Install cargo-audit and cargo-deny
-        uses: taiki-e/install-action@1b40b317f49a4a91ff7e2f3a0fe0f44f988fdc16 # v2.32.18
+        uses: taiki-e/install-action@5c256d5a578917d032b8adcd9802cfa432265631 # v2.32.18
         with:
           tool: cargo-audit,cargo-deny
 
