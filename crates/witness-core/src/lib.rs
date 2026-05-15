@@ -16,6 +16,10 @@ pub mod manifest;
 pub mod signing;
 pub mod verifier;
 
+pub use assertions::audio_fingerprint::{
+    self, compute as compute_audio_fingerprint, verify_against as verify_audio_fingerprint,
+    AcousticCheck, AudioFingerprint,
+};
 pub use assertions::incident_report::{
     EvidenceKind, EvidenceReference, IncidentReport, IncidentType, Location, WitnessContact,
 };

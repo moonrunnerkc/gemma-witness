@@ -15,8 +15,8 @@ use witness_core::manifest::{
     ModelFingerprint, ReasoningTrace, SignerInfo, MANIFEST_VERSION,
 };
 use witness_core::{
-    EvidenceKind, EvidenceReference, IncidentReport, IncidentType, InferenceParameters, Location,
-    PassParameters,
+    AudioFingerprint, EvidenceKind, EvidenceReference, IncidentReport, IncidentType,
+    InferenceParameters, Location, PassParameters,
 };
 
 /// Load the manifest schema with the external `incident-schema.json` `$ref`
@@ -101,6 +101,7 @@ fn minimal_manifest() -> Manifest {
                 captured_at: "2026-05-15T00:00:00Z".to_string(),
             },
             inference_parameters: None,
+            audio_fingerprint: None,
         },
     }
 }
@@ -154,6 +155,41 @@ fn manifest_with_inference_parameters_validates() {
         let messages: Vec<String> = errors.map(|e| e.to_string()).collect();
         panic!("manifest with inference_parameters must validate: {messages:?}");
     }
+}
+
+#[test]
+fn manifest_with_audio_fingerprint_validates() {
+    let schema = load_schema();
+    let compiled = JSONSchema::compile(&schema).expect("compile schema");
+    let mut manifest = minimal_manifest();
+    manifest.assertions.audio_fingerprint = Some(AudioFingerprint {
+        algorithm: witness_core::audio_fingerprint::ALGORITHM.to_string(),
+        value: "AAECAwQF".to_string(),
+        note: witness_core::audio_fingerprint::NOTE.to_string(),
+    });
+    let payload = serde_json::to_value(&manifest).expect("serialize manifest");
+    let result = compiled.validate(&payload);
+    if let Err(errors) = result {
+        let messages: Vec<String> = errors.map(|e| e.to_string()).collect();
+        panic!("manifest with audio_fingerprint must validate: {messages:?}");
+    }
+}
+
+#[test]
+fn schema_rejects_unknown_audio_fingerprint_algorithm() {
+    let schema = load_schema();
+    let compiled = JSONSchema::compile(&schema).expect("compile schema");
+    let mut manifest = minimal_manifest();
+    manifest.assertions.audio_fingerprint = Some(AudioFingerprint {
+        algorithm: "some-future-algo-v2".to_string(),
+        value: "AAECAwQF".to_string(),
+        note: "n/a".to_string(),
+    });
+    let payload = serde_json::to_value(&manifest).expect("serialize manifest");
+    assert!(
+        compiled.validate(&payload).is_err(),
+        "schema must reject an audio_fingerprint with an algorithm value not in the published enum"
+    );
 }
 
 #[test]

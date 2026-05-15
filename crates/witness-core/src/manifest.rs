@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::assertions::audio_fingerprint::AudioFingerprint;
 use crate::assertions::incident_report::IncidentReport;
 use crate::assertions::inference_parameters::InferenceParameters;
 
@@ -70,6 +71,12 @@ pub struct Assertions {
         default
     )]
     pub inference_parameters: Option<InferenceParameters>,
+    #[serde(
+        rename = "gemma.witness.audio_fingerprint",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub audio_fingerprint: Option<AudioFingerprint>,
 }
 
 /// Identity of the model that produced the reasoning + structured report.

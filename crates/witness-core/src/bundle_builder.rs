@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use base64::Engine;
 use chrono::Utc;
 
+use crate::assertions::audio_fingerprint;
 use crate::bundle_zip::{write_bundle, ZipEntry};
 use crate::canonical::canonicalize;
 use crate::error::WitnessCoreError;
@@ -82,6 +83,21 @@ pub fn build_and_seal_bundle<S: BundleSigner>(
         })?;
     let audio_hash = hash_bytes_hex(&audio_bytes);
 
+    // Advisory perceptual fingerprint. A decode failure surfaces as the
+    // assertion being omitted, never as a sealing failure: the cryptographic
+    // hash above still pins the bytes. We log on stderr to avoid silently
+    // hiding decoder bugs.
+    let audio_fingerprint = match audio_fingerprint::compute(&audio_bytes) {
+        Ok(fp) => Some(fp),
+        Err(err) => {
+            eprintln!(
+                "witness-core: advisory audio fingerprint skipped: {err}. \
+                 the cryptographic asset hash is unaffected."
+            );
+            None
+        }
+    };
+
     let mut image_blobs: Vec<(String, Vec<u8>, String)> =
         Vec::with_capacity(inputs.image_paths.len());
     for (i, image_path) in inputs.image_paths.iter().enumerate() {
@@ -140,6 +156,7 @@ pub fn build_and_seal_bundle<S: BundleSigner>(
             consistency_verdict: inputs.consistency.clone(),
             capture_environment: inputs.capture_environment.clone(),
             inference_parameters: inputs.inference_parameters.clone(),
+            audio_fingerprint,
         },
     };
 

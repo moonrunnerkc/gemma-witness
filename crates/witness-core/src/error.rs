@@ -97,4 +97,10 @@ pub enum WitnessCoreError {
         "no device key has been generated. call load_or_create_device_key once before signing."
     )]
     NoDeviceKey,
+
+    /// WAV bytes could not be decoded for advisory acoustic fingerprinting.
+    /// The asset hash still pins the original bytes; this error means the
+    /// advisory check could not run, not that the audio itself is invalid.
+    #[error("audio could not be decoded for acoustic fingerprinting: {detail}. the SHA-256 asset hash still pins the bytes.")]
+    AudioDecode { detail: String },
 }

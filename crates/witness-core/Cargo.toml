@@ -21,6 +21,8 @@ zip.workspace = true
 keyring.workspace = true
 uuid.workspace = true
 rand.workspace = true
+rustfft.workspace = true
+hound.workspace = true
 
 [features]
 default = []

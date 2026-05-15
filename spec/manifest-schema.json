@@ -114,6 +114,17 @@
             "captured_at": { "type": "string", "format": "date-time" }
           }
         },
+        "gemma.witness.audio_fingerprint": {
+          "description": "Optional advisory perceptual fingerprint of the captured audio. Not a security primitive; the SHA-256 in the audio asset entry remains the cryptographic guarantee. Verifiers display the field and may offer an opt-in re-derivation check.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["algorithm", "value", "note"],
+          "properties": {
+            "algorithm": { "type": "string", "enum": ["gw-spectral-v1"] },
+            "value": { "type": "string", "minLength": 1 },
+            "note": { "type": "string", "minLength": 1 }
+          }
+        },
         "gemma.witness.inference_parameters": {
           "description": "Optional advisory assertion recording the sampling parameters used by each inference pass. Forensic, not cryptographic; verifiers display it without passing or failing on its contents.",
           "type": "object",
