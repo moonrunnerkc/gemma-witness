@@ -11,8 +11,8 @@ use jsonschema::JSONSchema;
 use serde_json::Value;
 use witness_core::bundle_builder::paths as bundle_paths;
 use witness_core::manifest::{
-    Assertions, AssetEntry, CaptureEnvironment, ConsistencyLabel, ConsistencyVerdict, Manifest,
-    ModelFingerprint, ReasoningTrace, SignerInfo, MANIFEST_VERSION,
+    AmendsReference, Assertions, AssetEntry, CaptureEnvironment, ConsistencyLabel,
+    ConsistencyVerdict, Manifest, ModelFingerprint, ReasoningTrace, SignerInfo, MANIFEST_VERSION,
 };
 use witness_core::{
     AudioFingerprint, EvidenceKind, EvidenceReference, IncidentReport, IncidentType,
@@ -103,6 +103,7 @@ fn minimal_manifest() -> Manifest {
             inference_parameters: None,
             audio_fingerprint: None,
         },
+        amends: None,
     }
 }
 
@@ -189,6 +190,43 @@ fn schema_rejects_unknown_audio_fingerprint_algorithm() {
     assert!(
         compiled.validate(&payload).is_err(),
         "schema must reject an audio_fingerprint with an algorithm value not in the published enum"
+    );
+}
+
+#[test]
+fn manifest_with_amends_reference_validates() {
+    let schema = load_schema();
+    let compiled = JSONSchema::compile(&schema).expect("compile schema");
+    let mut manifest = minimal_manifest();
+    manifest.amends = Some(AmendsReference {
+        original_bundle_id: "00000000-1111-2222-3333-444444444444".to_string(),
+        original_manifest_sha256: "9".repeat(64),
+        reason:
+            "the prior bundle named the wrong intersection; this correction issues the right one"
+                .to_string(),
+    });
+    let payload = serde_json::to_value(&manifest).expect("serialize manifest");
+    let result = compiled.validate(&payload);
+    if let Err(errors) = result {
+        let messages: Vec<String> = errors.map(|e| e.to_string()).collect();
+        panic!("manifest with amends reference must validate: {messages:?}");
+    }
+}
+
+#[test]
+fn schema_rejects_amends_with_malformed_uuid() {
+    let schema = load_schema();
+    let compiled = JSONSchema::compile(&schema).expect("compile schema");
+    let mut manifest = minimal_manifest();
+    manifest.amends = Some(AmendsReference {
+        original_bundle_id: "not-a-uuid".to_string(),
+        original_manifest_sha256: "9".repeat(64),
+        reason: "n/a".to_string(),
+    });
+    let payload = serde_json::to_value(&manifest).expect("serialize manifest");
+    assert!(
+        compiled.validate(&payload).is_err(),
+        "schema must reject an amends.original_bundle_id that is not a UUID v4"
     );
 }
 

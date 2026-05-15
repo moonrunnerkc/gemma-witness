@@ -81,6 +81,7 @@ fn make_inputs(public_key_pem: String, key_id: String) -> BundleInputs {
         signer_public_key_pem: public_key_pem,
         signer_key_id: key_id,
         inference_parameters: None,
+        amends: None,
     }
 }
 

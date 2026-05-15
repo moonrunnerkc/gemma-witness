@@ -104,6 +104,11 @@ pub async fn seal_bundle_cmd(state: State<'_, SharedState>) -> Result<SealedBund
         signer_public_key_pem: device_key.public_key_pem,
         signer_key_id: device_key.key_id,
         inference_parameters: Some(inference_parameters_snapshot()),
+        // Amendment chains are part of the format. The UI does not yet
+        // surface a way to issue one, so production seals always emit
+        // non-amending bundles. A future capture flow can populate this
+        // field by extending the seal command's inputs.
+        amends: None,
     };
 
     let bundles_dir = data_dir.join("bundles");

@@ -11,8 +11,8 @@ use crate::canonical::canonicalize;
 use crate::error::WitnessCoreError;
 use crate::hashing::{hash_bytes_hex, hash_file_hex};
 use crate::manifest::{
-    Assertions, AssetEntry, CaptureEnvironment, ConsistencyVerdict, Manifest, ModelFingerprint,
-    ReasoningTrace, SignatureDocument, SignerInfo, MANIFEST_VERSION,
+    AmendsReference, Assertions, AssetEntry, CaptureEnvironment, ConsistencyVerdict, Manifest,
+    ModelFingerprint, ReasoningTrace, SignatureDocument, SignerInfo, MANIFEST_VERSION,
 };
 use crate::{IncidentReport, InferenceParameters};
 
@@ -55,6 +55,10 @@ pub struct BundleInputs {
     /// adopted the witness-inference helper yet.
     #[allow(clippy::struct_field_names)]
     pub inference_parameters: Option<InferenceParameters>,
+    /// Optional reference to a prior bundle that this one supersedes. Set
+    /// when issuing a correction or amendment; leave None for a fresh
+    /// witness capture.
+    pub amends: Option<AmendsReference>,
 }
 
 /// A signer is anything that can produce a 64-byte Ed25519 signature over a
@@ -158,6 +162,7 @@ pub fn build_and_seal_bundle<S: BundleSigner>(
             inference_parameters: inputs.inference_parameters.clone(),
             audio_fingerprint,
         },
+        amends: inputs.amends.clone(),
     };
 
     let manifest_bytes = canonicalize(&manifest)?;

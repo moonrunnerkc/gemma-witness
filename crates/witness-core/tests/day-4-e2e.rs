@@ -159,6 +159,7 @@ async fn day_4_e2e_capture_seal_verify_tamper() {
         signer_public_key_pem: pem,
         signer_key_id: kid,
         inference_parameters: Some(witness_inference::inference_parameters_snapshot()),
+        amends: None,
     };
 
     let out_dir = artifacts_dir();

@@ -27,6 +27,23 @@ pub struct Manifest {
     pub signer: SignerInfo,
     pub assets: Vec<AssetEntry>,
     pub assertions: Assertions,
+    /// Optional pointer at the bundle this one supersedes. The verifier
+    /// surfaces the relationship; it does not merge bundles or hide the
+    /// original. Cryptographically you cannot unsign, so corrections must
+    /// be issued as new signed bundles that reference the prior one.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub amends: Option<AmendsReference>,
+}
+
+/// Reference to a prior bundle that this manifest corrects or supersedes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AmendsReference {
+    /// UUID v4 of the original bundle.
+    pub original_bundle_id: String,
+    /// Hex SHA-256 of the original bundle's JCS-canonicalized manifest.
+    pub original_manifest_sha256: String,
+    /// One-paragraph explanation of why this bundle amends the original.
+    pub reason: String,
 }
 
 /// Signer metadata recorded inside the manifest itself.

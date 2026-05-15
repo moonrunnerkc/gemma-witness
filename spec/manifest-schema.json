@@ -14,6 +14,23 @@
     "assertions"
   ],
   "properties": {
+    "amends": {
+      "description": "Optional pointer at the bundle this one supersedes. Present only on amendment bundles. The verifier displays the reference; it does not merge bundles or hide the original.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["original_bundle_id", "original_manifest_sha256", "reason"],
+      "properties": {
+        "original_bundle_id": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "original_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
     "manifest_version": {
       "description": "Integer schema version. The verifier routes on this; bump on every incompatible change.",
       "type": "integer",

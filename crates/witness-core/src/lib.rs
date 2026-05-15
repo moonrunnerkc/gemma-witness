@@ -28,7 +28,8 @@ pub use bundle_builder::{build_and_seal_bundle, BundleInputs, BundleSigner};
 pub use error::WitnessCoreError;
 pub use key_provider::{KeyProvider, PublicKeyHandle, SigningAlgorithm, SoftwareEd25519Provider};
 pub use manifest::{
-    Assertions, AssetEntry, CaptureEnvironment, ConsistencyLabel, ConsistencyVerdict, Manifest,
-    ModelFingerprint, ReasoningTrace, SignatureDocument, SignerInfo, MANIFEST_VERSION,
+    AmendsReference, Assertions, AssetEntry, CaptureEnvironment, ConsistencyLabel,
+    ConsistencyVerdict, Manifest, ModelFingerprint, ReasoningTrace, SignatureDocument, SignerInfo,
+    MANIFEST_VERSION,
 };
 pub use verifier::{verify_bundle, VerificationReport};

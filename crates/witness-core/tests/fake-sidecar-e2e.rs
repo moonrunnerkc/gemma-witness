@@ -122,6 +122,7 @@ async fn full_pipeline_round_trip_against_fake_sidecar() {
         signer_public_key_pem: pem,
         signer_key_id: kid,
         inference_parameters: Some(witness_inference::inference_parameters_snapshot()),
+        amends: None,
     };
 
     let out_dir = workspace_root().join("target/test-artifacts");

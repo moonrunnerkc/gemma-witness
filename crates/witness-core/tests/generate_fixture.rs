@@ -88,6 +88,7 @@ fn generate_day_4_fixture() {
         signer_public_key_pem: pem,
         signer_key_id: kid,
         inference_parameters: None,
+        amends: None,
     };
 
     let mut out = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
