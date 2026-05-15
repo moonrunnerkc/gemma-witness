@@ -36,7 +36,7 @@ base64 = "0.22"
 ed25519-dalek = { version = "2.1", features = ["pem", "rand_core"] }
 rand = "0.8"
 rand_core = "0.6"
-serde_jcs = "0.1"
+serde_jcs = "0.2"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 keyring = { version = "3.6", features = ["apple-native", "windows-native", "linux-native-sync-persistent", "crypto-rust"] }
 uuid = { version = "1.10", features = ["v4", "serde"] }
