@@ -16,7 +16,7 @@ witness-core = { path = "../../../crates/witness-core" }
 witness-inference = { path = "../../../crates/witness-inference" }
 witness-fingerprints = { path = "../../../crates/witness-fingerprints" }
 gethostname = "0.5"
-dirs = "5"
+dirs = "6"
 sha2 = "0.10"
 hex = "0.4"
 uuid = { version = "1", features = ["v4"] }
