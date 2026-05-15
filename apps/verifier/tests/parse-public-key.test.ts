@@ -42,19 +42,29 @@ async function runTests(): Promise<void> {
     console.log("PASS PEM T1");
   }
 
-  // T2: valid 32-byte raw key passes through.
-  console.log("--- PEM T2: valid 32-byte raw key");
+  // T2: legacy 32-byte raw key form is rejected. Only the SPKI form produced
+  // by the Rust capture app is accepted; accepting both would create
+  // cross-implementation parsing drift.
+  console.log("--- PEM T2: legacy 32-byte raw key is rejected");
   {
-    const raw = Uint8Array.from(
-      Buffer.from(VALID_RAW_32_HEX, "hex"),
-    );
+    const raw = Uint8Array.from(Buffer.from(VALID_RAW_32_HEX, "hex"));
     const b64 = Buffer.from(raw).toString("base64");
     const pem = `-----BEGIN PUBLIC KEY-----\n${b64}\n-----END PUBLIC KEY-----`;
-    const key = parsePublicKeyPem(pem);
-    assert(key.length === 32, "T2: expected 32-byte raw key");
+    let threw = false;
+    let message = "";
+    try {
+      parsePublicKeyPem(pem);
+    } catch (err) {
+      threw = true;
+      message = err instanceof Error ? err.message : String(err);
+    }
     assert(
-      bytesToHex(key) === VALID_RAW_32_HEX,
-      "T2: raw key should pass through unchanged",
+      threw,
+      "T2: expected parsePublicKeyPem to reject the legacy 32-byte raw form",
+    );
+    assert(
+      message.includes("44") || message.includes("SPKI"),
+      `T2: error should mention the required 44-byte SPKI form, got: ${message}`,
     );
     console.log("PASS PEM T2");
   }

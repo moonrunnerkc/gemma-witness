@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "description": "Registry of known witness signers. Each entry pins a signer's key_id (lowercase hex SHA-256 of the raw 32-byte public key) and the SHA-256 of the PEM-encoded public-key bytes. Verifiers display the entry's label and surface a failing check row when the bundle's signer is not in this list. Add entries by recording the signer's public-key fingerprint out-of-band (e.g., a published author's profile page, an editor's signed announcement).",
+  "signers": []
+}

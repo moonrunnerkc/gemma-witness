@@ -123,6 +123,14 @@ async fn full_pipeline_round_trip_against_fake_sidecar() {
         signer_key_id: kid,
         inference_parameters: Some(witness_inference::inference_parameters_snapshot()),
         amends: None,
+        pinned_audio_sha256: Some(pipeline.transcribe.audio_sha256_hex.clone()),
+        pinned_image_sha256s: Some(
+            pipeline
+                .images
+                .iter()
+                .map(|i| i.image_sha256_hex.clone())
+                .collect(),
+        ),
     };
 
     let out_dir = workspace_root().join("target/test-artifacts");
@@ -133,7 +141,7 @@ async fn full_pipeline_round_trip_against_fake_sidecar() {
     ));
     build_and_seal_bundle(&inputs, &signer, &bundle_path).expect("seal");
 
-    let known = vec![fingerprint.sha256.clone()];
+    let known: Vec<witness_core::KnownFingerprint> = vec![fingerprint.clone().into()];
     let report = verify_bundle(&bundle_path, &known).expect("verify clean");
     assert!(
         report.is_ok(),

@@ -6,8 +6,17 @@
     type InferenceSummary,
     type SealedBundle
   } from "./bindings";
+  import Header from "./lib/header.svelte";
+  import Stepper, { type StepKey } from "./lib/stepper.svelte";
+  import Recorder from "./lib/recorder.svelte";
+  import Images from "./lib/images.svelte";
+  import Review from "./lib/review.svelte";
+  import Sealed from "./lib/sealed.svelte";
+  import ActionBar from "./lib/action-bar.svelte";
+  import ErrorBanner from "./lib/error-banner.svelte";
 
   type Envelope<T> = { status: "ok"; data: T } | { status: "error"; error: AppError };
+  type Phase = "idle" | "recording" | "ready" | "running" | "reviewed" | "sealed";
 
   async function unwrap<T>(promise: Promise<Envelope<T>>): Promise<T> {
     const result = await promise;
@@ -21,17 +30,38 @@
     return result.data;
   }
 
-  let phase: "idle" | "recording" | "ready" | "running" | "reviewed" | "sealed" | "error" =
-    $state("idle");
-  let deviceKeyId: string | null = $state(null);
-  let recording: RecordingFinished | null = $state(null);
-  let imagePaths: readonly string[] = $state([]);
-  let summary: InferenceSummary | null = $state(null);
-  let sealed: SealedBundle | null = $state(null);
-  let errorMessage: string | null = $state(null);
+  let phase = $state<Phase>("idle");
+  let deviceKeyId = $state<string | null>(null);
+  let recording = $state<RecordingFinished | null>(null);
+  let imagePaths = $state<readonly string[]>([]);
+  let summary = $state<InferenceSummary | null>(null);
+  let sealed = $state<SealedBundle | null>(null);
+  let errorMessage = $state<string | null>(null);
+
+  let recordStartedAt = $state<number | null>(null);
+  let elapsedMs = $state(0);
+  let timerId: ReturnType<typeof setInterval> | null = null;
+
+  function startTimer(): void {
+    recordStartedAt = Date.now();
+    elapsedMs = 0;
+    timerId = setInterval(() => {
+      if (recordStartedAt !== null) {
+        elapsedMs = Date.now() - recordStartedAt;
+      }
+    }, 250);
+  }
+
+  function stopTimer(): void {
+    if (timerId !== null) {
+      clearInterval(timerId);
+      timerId = null;
+    }
+    recordStartedAt = null;
+  }
 
   function reportError(err: unknown): void {
-    phase = "error";
+    stopTimer();
     errorMessage = err instanceof Error ? err.message : String(err);
   }
 
@@ -48,10 +78,12 @@
       if (phase === "recording") {
         const result = await unwrap(commands.stopRecordingCmd());
         recording = result;
-        phase = imagePaths.length > 0 ? "ready" : "idle";
+        stopTimer();
+        phase = "ready";
         return;
       }
       await unwrap(commands.startRecordingCmd());
+      startTimer();
       phase = "recording";
     } catch (err: unknown) {
       reportError(err);
@@ -62,24 +94,20 @@
     try {
       const picked = await unwrap(commands.pickImagesCmd());
       imagePaths = picked.paths;
-      if (recording !== null) {
-        phase = "ready";
-      }
     } catch (err: unknown) {
       reportError(err);
     }
   }
 
   async function handleRunInference(): Promise<void> {
-    if (recording === null) {
-      return;
-    }
+    if (recording === null) return;
     phase = "running";
     try {
       summary = await unwrap(commands.runInferenceCmd());
       phase = "reviewed";
     } catch (err: unknown) {
       reportError(err);
+      phase = "ready";
     }
   }
 
@@ -92,87 +120,169 @@
     }
   }
 
+  function handleReset(): void {
+    phase = "idle";
+    recording = null;
+    imagePaths = [];
+    summary = null;
+    sealed = null;
+    errorMessage = null;
+    elapsedMs = 0;
+  }
+
+  const currentStep = $derived<StepKey>(
+    phase === "running"
+      ? "inference"
+      : phase === "reviewed"
+        ? "review"
+        : phase === "sealed"
+          ? "seal"
+          : "capture"
+  );
+
+  const completedSteps = $derived<ReadonlySet<StepKey>>(
+    new Set<StepKey>(
+      phase === "sealed"
+        ? ["capture", "inference", "review", "seal"]
+        : phase === "reviewed"
+          ? ["capture", "inference"]
+          : phase === "ready" || phase === "running"
+            ? phase === "ready"
+              ? ["capture"]
+              : ["capture"]
+            : []
+    )
+  );
+
+  const canRunInference = $derived(recording !== null && phase === "ready");
+  const isCaptureBusy = $derived(phase === "running");
+
   void handleInit();
 </script>
 
-<main>
-  <h1>Gemma.Witness capture</h1>
+<div class="shell">
+  <div class="container">
+    <Header {deviceKeyId} />
 
-  {#if deviceKeyId !== null}
-    <p class="device">device key: <code>{deviceKeyId.slice(0, 16)}…</code></p>
-  {/if}
+    <div class="stepper-wrap">
+      <Stepper current={currentStep} completed={completedSteps} />
+    </div>
 
-  <section>
-    <button onclick={handleRecord} disabled={phase === "running"}>
-      {phase === "recording" ? "stop recording" : "record audio"}
-    </button>
-    <button onclick={handlePickImages} disabled={phase === "recording" || phase === "running"}>
-      pick images ({imagePaths.length})
-    </button>
-    <button
-      onclick={handleRunInference}
-      disabled={recording === null || phase === "running"}
-    >
-      run inference
-    </button>
-    <button
-      onclick={handleSeal}
-      disabled={summary === null || phase !== "reviewed"}
-    >
-      seal bundle
-    </button>
-  </section>
+    {#if errorMessage !== null}
+      <div class="banner-wrap">
+        <ErrorBanner
+          message={errorMessage}
+          onDismiss={() => (errorMessage = null)}
+        />
+      </div>
+    {/if}
 
-  {#if summary !== null}
-    <section class="summary">
-      <h2>review</h2>
-      <p><strong>narrative:</strong> {summary.narrativeSummary}</p>
-      <p>
-        <strong>consistency:</strong>
-        {summary.consistencyVerdict} - {summary.consistencyReason}
-      </p>
-      <details>
-        <summary>transcript</summary>
-        <pre>{summary.transcript}</pre>
-      </details>
-      <details>
-        <summary>structured report</summary>
-        <pre>{summary.structuredReportJson}</pre>
-      </details>
-    </section>
-  {/if}
+    <main class="content">
+      {#if phase === "sealed" && sealed !== null}
+        <Sealed {sealed} onReset={handleReset} />
+      {:else if phase === "reviewed" && summary !== null}
+        <Review {summary} />
+        <ActionBar
+          label="Seal bundle"
+          icon="shield"
+          helper="Signs the canonicalized manifest with your device key. Bundle is written as a single .witness file."
+          onClick={handleSeal}
+        />
+      {:else}
+        <div class="capture-grid">
+          <Recorder
+            isRecording={phase === "recording"}
+            isBusy={isCaptureBusy}
+            {elapsedMs}
+            {recording}
+            onToggle={handleRecord}
+          />
+          <Images
+            paths={imagePaths}
+            isBusy={phase === "recording" || isCaptureBusy}
+            onPick={handlePickImages}
+          />
+        </div>
 
-  {#if sealed !== null}
-    <section class="sealed">
-      <h2>sealed</h2>
-      <p>bundle id: <code>{sealed.bundleId}</code></p>
-      <p>path: <code>{sealed.path}</code></p>
-    </section>
-  {/if}
+        <ActionBar
+          label="Run inference"
+          icon="sparkles"
+          helper={canRunInference
+            ? "Sends audio and images to the local Gemma sidecar. Reasoning trace is captured verbatim."
+            : "Record audio first. Images are optional."}
+          disabled={!canRunInference}
+          busy={phase === "running"}
+          busyLabel="Running locally"
+          onClick={handleRunInference}
+        />
+      {/if}
+    </main>
 
-  {#if errorMessage !== null}
-    <section class="error"><strong>error:</strong> {errorMessage}</section>
-  {/if}
-</main>
+    <footer class="footer">
+      <span>Offline · all processing happens on this device</span>
+      <span class="footer-mono">v0.1.0</span>
+    </footer>
+  </div>
+</div>
 
 <style>
-  main {
-    font-family: -apple-system, system-ui, sans-serif;
-    max-width: 760px;
-    margin: 2rem auto;
-    padding: 0 1rem;
+  .shell {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    padding: var(--space-6) var(--space-5) var(--space-10);
   }
-  button {
-    margin: 0.25rem 0.5rem 0.25rem 0;
-    padding: 0.5rem 0.75rem;
+
+  .container {
+    width: 100%;
+    max-width: var(--content-max);
+    display: flex;
+    flex-direction: column;
   }
-  pre {
-    background: #f4f4f4;
-    padding: 0.5rem;
-    overflow-x: auto;
-    white-space: pre-wrap;
+
+  .stepper-wrap {
+    margin-top: var(--space-6);
   }
-  .error {
-    color: #b00020;
+
+  .banner-wrap {
+    margin-top: var(--space-5);
+  }
+
+  .content {
+    margin-top: var(--space-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+  }
+
+  .capture-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-5);
+  }
+
+  @media (max-width: 760px) {
+    .capture-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-6) 0 var(--space-2);
+    margin-top: var(--space-8);
+    border-top: 1px solid var(--color-border-subtle);
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-xs);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+  }
+
+  .footer-mono {
+    font-family: var(--font-mono);
+    text-transform: none;
+    letter-spacing: 0;
   }
 </style>

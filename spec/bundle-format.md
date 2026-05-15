@@ -23,7 +23,7 @@ The signature is over `serde_jcs::to_vec(&manifest)`, i.e., the RFC 8785 JSON Ca
 
 ## Asset hashing
 
-Every entry under `assets/` (plus `manifest.json` itself once signed) is hashed as `SHA-256(raw file bytes)`. Bytes are obtained via `std::fs::read` and the matching JS verifier reads the bytes out of the unzipped entry. No decoding, normalization, or re-encoding occurs between read and hash.
+The manifest's integrity is enforced by the signature, not by an entry in `assets[]`. The asset hash list covers only files under `assets/`. Each entry is hashed as `SHA-256(raw file bytes)`. Bytes are obtained via `std::fs::read` and the matching JS verifier reads the bytes out of the unzipped entry. No decoding, normalization, or re-encoding occurs between read and hash.
 
 ## signature.json
 
@@ -40,6 +40,10 @@ Every entry under `assets/` (plus `manifest.json` itself once signed) is hashed 
 ## Versioning
 
 `manifest.manifest_version` is an integer. The verifier reads it first and routes to the matching validator. Any change to the manifest layout that would break an older verifier requires bumping this number and shipping a new validator branch.
+
+## Canonicalization edges
+
+`PassParameters.temperature` and `top_p` are unconstrained `number` fields in the schema today, because the inference pipeline already records values like `0.2` and `0.9` and tightening the schema would invalidate existing fixtures. RFC 8785 cross-language conformance is enforced via `tests/fixtures/canonicalization-conformance/`. If a future pass records a value whose canonical-bytes form diverges between `serde_jcs` (Rust) and `canonicalize` (npm), add a fixture case there before merging.
 
 ## Determinism
 

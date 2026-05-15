@@ -24,9 +24,23 @@ export async function verifySignature(
     return { name: "Signature valid", passed: false, details };
   }
 
+  if (manifest.signer.algorithm !== "ed25519") {
+    details.push(
+      `unsupported manifest.signer.algorithm "${manifest.signer.algorithm}"; expected "ed25519". only Ed25519 bundles are supported by this verifier version.`,
+    );
+    return { name: "Signature valid", passed: false, details };
+  }
+
   if (sigDoc.canonicalization !== "rfc8785") {
     details.push(
       `unsupported canonicalization "${sigDoc.canonicalization}"; expected "rfc8785". the manifest must be canonicalized per RFC 8785 for deterministic verification.`,
+    );
+    return { name: "Signature valid", passed: false, details };
+  }
+
+  if (sigDoc.signed_payload !== "manifest.json") {
+    details.push(
+      `signature.signed_payload is "${sigDoc.signed_payload}"; expected "manifest.json". this verifier only signs over manifest.json.`,
     );
     return { name: "Signature valid", passed: false, details };
   }

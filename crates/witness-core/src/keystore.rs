@@ -11,6 +11,7 @@
 use base64::Engine;
 use ed25519_dalek::{Signature, SigningKey, VerifyingKey, SECRET_KEY_LENGTH};
 use keyring::Entry;
+use zeroize::Zeroizing;
 
 use crate::error::WitnessCoreError;
 use crate::signing::{encode_public_key_pem, generate_signing_key, key_id, sign};
@@ -95,7 +96,8 @@ fn load_or_create_signing_key() -> Result<SigningKey, WitnessCoreError> {
         Some(seed_b64) => decode_seed(&seed_b64),
         None => {
             let key = generate_signing_key();
-            let seed_b64 = base64::engine::general_purpose::STANDARD.encode(key.to_bytes());
+            let seed_b64 =
+                Zeroizing::new(base64::engine::general_purpose::STANDARD.encode(key.to_bytes()));
             write_seed_b64(&seed_b64)?;
             Ok(key)
         }
@@ -109,12 +111,14 @@ fn load_signing_key() -> Result<SigningKey, WitnessCoreError> {
     }
 }
 
-fn decode_seed(seed_b64: &str) -> Result<SigningKey, WitnessCoreError> {
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(seed_b64.as_bytes())
-        .map_err(|source| WitnessCoreError::Keyring {
-            detail: format!("stored seed was not valid base64: {source}"),
-        })?;
+fn decode_seed(seed_b64: &Zeroizing<String>) -> Result<SigningKey, WitnessCoreError> {
+    let bytes: Zeroizing<Vec<u8>> = Zeroizing::new(
+        base64::engine::general_purpose::STANDARD
+            .decode(seed_b64.as_bytes())
+            .map_err(|source| WitnessCoreError::Keyring {
+                detail: format!("stored seed was not valid base64: {source}"),
+            })?,
+    );
     if bytes.len() != SECRET_KEY_LENGTH {
         return Err(WitnessCoreError::Keyring {
             detail: format!(
@@ -124,15 +128,15 @@ fn decode_seed(seed_b64: &str) -> Result<SigningKey, WitnessCoreError> {
             ),
         });
     }
-    let mut seed = [0u8; SECRET_KEY_LENGTH];
+    let mut seed = Zeroizing::new([0u8; SECRET_KEY_LENGTH]);
     seed.copy_from_slice(&bytes);
     Ok(SigningKey::from_bytes(&seed))
 }
 
-fn read_seed_b64() -> Result<Option<String>, WitnessCoreError> {
+fn read_seed_b64() -> Result<Option<Zeroizing<String>>, WitnessCoreError> {
     let entry = open_entry()?;
     match entry.get_password() {
-        Ok(value) => Ok(Some(value)),
+        Ok(value) => Ok(Some(Zeroizing::new(value))),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(err) => Err(WitnessCoreError::Keyring {
             detail: format!("get_password failed: {err}"),

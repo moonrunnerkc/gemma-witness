@@ -4,11 +4,11 @@ version = "0.1.0"
 description = "Local mlx-vlm sidecar for Gemma.Witness offline inference"
 requires-python = ">=3.13,<3.14"
 dependencies = [
-  "mlx-vlm",
-  "torchvision",
-  "fastapi",
-  "uvicorn",
-  "requests",
+  "mlx-vlm>=0.5,<0.6",
+  "torchvision>=0.21,<0.22",
+  "fastapi>=0.115,<0.116",
+  "uvicorn>=0.32,<0.33",
+  "requests>=2.32,<3.0",
 ]
 
 [tool.uv]

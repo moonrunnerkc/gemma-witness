@@ -1,7 +1,7 @@
 //! `run_inference` Tauri command: drives the four-pass pipeline.
 
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 use witness_inference::run_full_pipeline_default;
 
 use crate::error::AppError;
@@ -23,40 +23,71 @@ pub struct InferenceSummary {
 #[tauri::command]
 #[specta::specta]
 pub async fn run_inference_cmd(
+    app: AppHandle,
     state: State<'_, SharedState>,
 ) -> Result<InferenceSummary, AppError> {
-    let (audio_path, image_paths, data_dir) = {
-        let guard = state.lock().await;
+    let data_dir = derive_data_dir(&app)?;
+
+    // Re-entrancy guard (audit T-9). Reject overlapping inference calls
+    // before they can race the last_pipeline write.
+    let (audio_path, image_paths) = {
+        let mut guard = state.lock().await;
+        if guard.running_inference {
+            return Err(AppError::AlreadyInProgress {
+                operation: "inference".to_string(),
+            });
+        }
         let audio = guard
             .captured_audio
             .as_ref()
             .ok_or(AppError::NoCapturedAudio)?
             .path
             .clone();
-        let images = guard.picked_images.clone();
-        let data_dir = guard.data_dir.clone().ok_or_else(|| AppError::State {
-            detail: "app_local_data_dir was not initialized; call initialize_device first"
-                .to_string(),
-        })?;
-        (audio, images, data_dir)
+        let images: Vec<std::path::PathBuf> = guard
+            .picked_images
+            .iter()
+            .map(|i| i.staged_path.clone())
+            .collect();
+        guard.running_inference = true;
+        (audio, images)
     };
 
+    let result = run_inference_inner(&app, &state, &data_dir, &audio_path, &image_paths).await;
+
+    {
+        let mut guard = state.lock().await;
+        guard.running_inference = false;
+    }
+    result
+}
+
+async fn run_inference_inner(
+    _app: &AppHandle,
+    state: &State<'_, SharedState>,
+    data_dir: &std::path::Path,
+    audio_path: &std::path::Path,
+    image_paths: &[std::path::PathBuf],
+) -> Result<InferenceSummary, AppError> {
     let schema_path = workspace_schema_path();
-    let schema_text = std::fs::read_to_string(&schema_path).map_err(|err| AppError::Io {
-        path: schema_path.display().to_string(),
-        detail: format!("read incident schema: {err}"),
+    let schema_text = std::fs::read_to_string(&schema_path).map_err(|err| {
+        tracing::error!(?schema_path, %err, "could not read incident schema");
+        AppError::io_relative(
+            data_dir,
+            &schema_path,
+            format!("read incident schema: {err}"),
+        )
     })?;
     let schema: serde_json::Value =
         serde_json::from_str(&schema_text).map_err(|err| AppError::Inference {
             detail: format!("parse incident-schema.json: {err}"),
         })?;
 
-    let pipeline = run_full_pipeline_default(&audio_path, &image_paths, &schema).await?;
+    let pipeline = run_full_pipeline_default(audio_path, image_paths, &schema).await?;
 
     let trace_dir = data_dir.join("reasoning");
-    std::fs::create_dir_all(&trace_dir).map_err(|err| AppError::Io {
-        path: trace_dir.display().to_string(),
-        detail: err.to_string(),
+    std::fs::create_dir_all(&trace_dir).map_err(|err| {
+        tracing::error!(path = ?trace_dir, %err, "create reasoning dir");
+        AppError::io_relative(data_dir, &trace_dir, err.to_string())
     })?;
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
     let reasoning_path = trace_dir.join(format!("reasoning-{stamp}.txt"));
@@ -64,9 +95,13 @@ pub async fn run_inference_cmd(
         &reasoning_path,
         pipeline.consistency.reasoning_trace.as_bytes(),
     )
-    .map_err(|err| AppError::Io {
-        path: reasoning_path.display().to_string(),
-        detail: format!("write reasoning trace: {err}"),
+    .map_err(|err| {
+        tracing::error!(path = ?reasoning_path, %err, "write reasoning trace");
+        AppError::io_relative(
+            data_dir,
+            &reasoning_path,
+            format!("write reasoning trace: {err}"),
+        )
     })?;
 
     let image_descriptions: Vec<String> = pipeline
@@ -86,8 +121,15 @@ pub async fn run_inference_cmd(
         consistency_reason: pipeline.consistency.reason.clone(),
         image_descriptions: image_descriptions.clone(),
         total_latency_ms: u32::try_from(pipeline.total_latency_ms).unwrap_or(u32::MAX),
-        reasoning_trace_path: reasoning_path.display().to_string(),
+        reasoning_trace_path: crate::error::relativize_for_frontend(data_dir, &reasoning_path),
     };
+
+    let pinned_audio_sha256 = pipeline.transcribe.audio_sha256_hex.clone();
+    let pinned_image_sha256s: Vec<String> = pipeline
+        .images
+        .iter()
+        .map(|i| i.image_sha256_hex.clone())
+        .collect();
 
     {
         let mut guard = state.lock().await;
@@ -99,6 +141,8 @@ pub async fn run_inference_cmd(
             consistency_reason: pipeline.consistency.reason,
             reasoning_trace: pipeline.consistency.reasoning_trace,
             total_latency_ms: pipeline.total_latency_ms,
+            pinned_audio_sha256,
+            pinned_image_sha256s,
         });
         guard.reasoning_path = Some(reasoning_path);
     }
@@ -110,4 +154,11 @@ fn workspace_schema_path() -> std::path::PathBuf {
     let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     p.push("../../../spec/incident-schema.json");
     p
+}
+
+fn derive_data_dir(app: &AppHandle) -> Result<std::path::PathBuf, AppError> {
+    app.path().app_local_data_dir().map_err(|err| AppError::Io {
+        path: "(app_local_data_dir)".to_string(),
+        detail: err.to_string(),
+    })
 }

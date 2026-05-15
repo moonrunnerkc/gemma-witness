@@ -178,7 +178,7 @@ struct LfsPointer {
 }
 
 async fn fetch_hf_lfs_pointer(model_id: &str, revision: &str) -> Result<LfsPointer> {
-    let url = format!("{HF_API_BASE}/{model_id}/revision/{revision}");
+    let url = format!("{HF_API_BASE}/{model_id}/revision/{revision}?blobs=true");
     let client = reqwest::Client::builder()
         .user_agent("gemma-witness-seed-fingerprints/0.1")
         .build()?;

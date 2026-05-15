@@ -1,0 +1,24 @@
+# Code owners.
+#
+# Paths in this file require security-focused review on change. The intent is
+# to keep the "boring single-line dependency or fingerprint bump that ships
+# malicious bytes" attack class behind a four-eyes review.
+
+# Lockfiles
+Cargo.lock @bradkinnard
+**/pnpm-lock.yaml @bradkinnard
+
+# Model fingerprint registry (trust anchor for every sealed bundle).
+inference/fingerprints/** @bradkinnard
+
+# CI and release workflows.
+.github/workflows/** @bradkinnard
+
+# Cryptographic core, signing surface, manifest schema, ZIP boundary.
+crates/witness-core/src/signing.rs @bradkinnard
+crates/witness-core/src/verifier.rs @bradkinnard
+crates/witness-core/src/keystore.rs @bradkinnard
+crates/witness-core/src/canonical.rs @bradkinnard
+crates/witness-core/src/bundle_zip.rs @bradkinnard
+crates/witness-core/src/bundle_builder.rs @bradkinnard
+crates/witness-core/src/manifest.rs @bradkinnard

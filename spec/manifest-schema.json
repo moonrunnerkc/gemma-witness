@@ -15,16 +15,26 @@
   ],
   "properties": {
     "amends": {
-      "description": "Optional pointer at the bundle this one supersedes. Present only on amendment bundles. The verifier displays the reference; it does not merge bundles or hide the original.",
+      "description": "Optional pointer at the bundle this one supersedes. Present only on amendment bundles. The verifier displays the reference; it does not merge bundles or hide the original. Verifiers MUST check that the amending bundle's signer.key_id matches original_signer_key_id and refuse to treat the bundle as a continuation of the chain on mismatch.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["original_bundle_id", "original_manifest_sha256", "reason"],
+      "required": [
+        "original_bundle_id",
+        "original_manifest_sha256",
+        "original_signer_key_id",
+        "reason"
+      ],
       "properties": {
         "original_bundle_id": {
           "type": "string",
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
         },
         "original_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "original_signer_key_id": {
+          "description": "signer.key_id of the original bundle. Lowercase hex SHA-256 of the original's raw 32-byte public key. The amending bundle's signer.key_id must equal this value for the amendment chain to be trusted.",
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
         },

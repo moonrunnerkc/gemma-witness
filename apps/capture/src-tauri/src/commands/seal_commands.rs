@@ -3,7 +3,8 @@
 use std::path::PathBuf;
 
 use serde::Serialize;
-use tauri::State;
+use sha2::{Digest, Sha256};
+use tauri::{AppHandle, Manager, State};
 use witness_core::bundle_builder::{build_and_seal_bundle, BundleInputs, BundleSigner};
 use witness_core::key_provider::{KeyProvider, SoftwareEd25519Provider};
 use witness_core::manifest::{
@@ -19,6 +20,7 @@ use crate::error::AppError;
 use crate::state::SharedState;
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+const MODEL_SAFETENSORS_ENV: &str = "WITNESS_MODEL_SAFETENSORS_PATH";
 
 #[derive(Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -56,34 +58,75 @@ impl<P: KeyProvider> BundleSigner for KeyProviderSigner<P> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn seal_bundle_cmd(state: State<'_, SharedState>) -> Result<SealedBundle, AppError> {
-    let (audio_path, image_paths, snapshot, data_dir) = {
-        let guard = state.lock().await;
+pub async fn seal_bundle_cmd(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+) -> Result<SealedBundle, AppError> {
+    let data_dir = derive_data_dir(&app)?;
+
+    // Re-entrancy guard (audit T-9).
+    let (audio_path, image_paths, snapshot) = {
+        let mut guard = state.lock().await;
+        if guard.running_seal {
+            return Err(AppError::AlreadyInProgress {
+                operation: "seal".to_string(),
+            });
+        }
         let audio = guard
             .captured_audio
             .as_ref()
             .ok_or(AppError::NoCapturedAudio)?
             .path
             .clone();
-        let images = guard.picked_images.clone();
+        let images: Vec<PathBuf> = guard
+            .picked_images
+            .iter()
+            .map(|i| i.staged_path.clone())
+            .collect();
         let snap = guard.last_pipeline.clone().ok_or_else(|| AppError::State {
             detail: "no inference pipeline output staged; run inference before sealing".to_string(),
         })?;
-        let data_dir = guard.data_dir.clone().ok_or_else(|| AppError::State {
-            detail: "app_local_data_dir was not initialized; call initialize_device first"
-                .to_string(),
-        })?;
-        (audio, images, snap, data_dir)
+        guard.running_seal = true;
+        (audio, images, snap)
     };
 
+    let result = seal_inner(&data_dir, audio_path, image_paths, snapshot).await;
+
+    {
+        let mut guard = state.lock().await;
+        guard.running_seal = false;
+    }
+    result
+}
+
+async fn seal_inner(
+    data_dir: &std::path::Path,
+    audio_path: PathBuf,
+    image_paths: Vec<PathBuf>,
+    snapshot: crate::state::PipelineSnapshot,
+) -> Result<SealedBundle, AppError> {
     let key_provider = SoftwareEd25519Provider::new();
     let device_key = key_provider.load_or_create_public()?;
     let fingerprint = resolve_active_model_fingerprint().await?;
+
+    verify_live_model_matches_registry(&fingerprint)?;
 
     let verdict_label = match snapshot.consistency_verdict.as_str() {
         "consistent" => ConsistencyLabel::Consistent,
         _ => ConsistencyLabel::Inconsistent,
     };
+
+    let pinned_audio_sha256 = snapshot.pinned_audio_sha256.clone();
+    let pinned_image_sha256s = snapshot.pinned_image_sha256s.clone();
+    if pinned_image_sha256s.len() != image_paths.len() {
+        return Err(AppError::State {
+            detail: format!(
+                "inference produced {} image hashes but {} images are staged. re-run inference after picking images.",
+                pinned_image_sha256s.len(),
+                image_paths.len()
+            ),
+        });
+    }
 
     let inputs = BundleInputs {
         audio_path,
@@ -104,20 +147,43 @@ pub async fn seal_bundle_cmd(state: State<'_, SharedState>) -> Result<SealedBund
         signer_public_key_pem: device_key.public_key_pem,
         signer_key_id: device_key.key_id,
         inference_parameters: Some(inference_parameters_snapshot()),
-        // Amendment chains are part of the format. The UI does not yet
-        // surface a way to issue one, so production seals always emit
-        // non-amending bundles. A future capture flow can populate this
-        // field by extending the seal command's inputs.
         amends: None,
+        pinned_audio_sha256: Some(pinned_audio_sha256),
+        pinned_image_sha256s: Some(pinned_image_sha256s),
     };
 
     let bundles_dir = data_dir.join("bundles");
-    std::fs::create_dir_all(&bundles_dir).map_err(|err| AppError::Io {
-        path: bundles_dir.display().to_string(),
-        detail: err.to_string(),
+    std::fs::create_dir_all(&bundles_dir).map_err(|err| {
+        tracing::error!(path = ?bundles_dir, %err, "create bundles dir");
+        AppError::io_relative(data_dir, &bundles_dir, err.to_string())
     })?;
+    let bundle_uuid = uuid::Uuid::new_v4().to_string();
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
-    let out_path: PathBuf = bundles_dir.join(format!("incident-{stamp}.witness"));
+    let mut out_path: PathBuf = bundles_dir.join(format!("incident-{stamp}.witness"));
+    // T-11: never truncate an existing bundle. Take a UUID suffix when
+    // a same-second seal would collide.
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&out_path)
+    {
+        Ok(_) => {
+            // We just opened a placeholder; drop the handle so build_and_seal_bundle can
+            // recreate the file via its zip writer. The placeholder reserves the path
+            // against a parallel seal racing for the same filename.
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+            out_path = bundles_dir.join(format!("incident-{stamp}-{bundle_uuid}.witness"));
+        }
+        Err(err) => {
+            tracing::error!(path = ?out_path, %err, "create_new bundle output");
+            return Err(AppError::io_relative(
+                data_dir,
+                &out_path,
+                format!("create_new: {err}"),
+            ));
+        }
+    }
 
     let signer = KeyProviderSigner {
         provider: key_provider,
@@ -126,8 +192,59 @@ pub async fn seal_bundle_cmd(state: State<'_, SharedState>) -> Result<SealedBund
 
     Ok(SealedBundle {
         bundle_id,
-        path: out_path.display().to_string(),
+        path: crate::error::relativize_for_frontend(data_dir, &out_path),
     })
+}
+
+/// Hash `model.safetensors` at seal time and compare against the registry's
+/// pinned SHA-256. The path is taken from
+/// [`WITNESS_MODEL_SAFETENSORS_PATH`] which the operator points at the
+/// sidecar's loaded weights file. Closes audit finding C-13: previously the
+/// seal recorded whatever the registry said the hash was, never the live
+/// model's actual bytes.
+fn verify_live_model_matches_registry(fp: &ModelFingerprint) -> Result<(), AppError> {
+    let path = match std::env::var(MODEL_SAFETENSORS_ENV) {
+        Ok(p) if !p.is_empty() => std::path::PathBuf::from(p),
+        _ => {
+            return Err(AppError::State {
+                detail: format!(
+                    "{MODEL_SAFETENSORS_ENV} is not set. point it at the model.safetensors file the running sidecar loaded so seal can confirm the live model matches the pinned fingerprint registry entry. see README \"trust model\" section."
+                ),
+            });
+        }
+    };
+    let mut file = std::fs::File::open(&path).map_err(|err| {
+        tracing::error!(?path, %err, "open model.safetensors for seal-time hash");
+        AppError::State {
+            detail: format!(
+                "could not open model.safetensors at {} (set via {MODEL_SAFETENSORS_ENV}): {err}",
+                path.display()
+            ),
+        }
+    })?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher).map_err(|err| AppError::State {
+        detail: format!(
+            "could not read model.safetensors at {} for hashing: {err}",
+            path.display()
+        ),
+    })?;
+    let observed = hex::encode(hasher.finalize());
+    if observed != fp.sha256 {
+        return Err(AppError::State {
+            detail: format!(
+                "live model.safetensors at {} hashes to {} but the registry pins {} for {}@{}. \
+                 refusing to seal: the running sidecar is not the audited model. \
+                 confirm the sidecar is serving the pinned revision and re-run seal.",
+                path.display(),
+                observed,
+                fp.sha256,
+                fp.model_id,
+                fp.revision
+            ),
+        });
+    }
+    Ok(())
 }
 
 /// Ask the live sidecar which model is loaded, then resolve the matching
@@ -177,6 +294,10 @@ fn map_fingerprint_error(err: FingerprintError) -> AppError {
                 "fingerprint registry schema mismatch: embedded index reports v{found}, this build expected v{expected}. rebuild the capture app"
             ),
         },
+        FingerprintError::Empty => AppError::State {
+            detail: "fingerprint registry is empty. rebuild after running tools/seed-fingerprints"
+                .to_string(),
+        },
         FingerprintError::Corrupt { detail } => AppError::State {
             detail: format!("fingerprint registry corrupt: {detail}"),
         },
@@ -191,4 +312,11 @@ fn hostname_opt() -> Option<String> {
     } else {
         Some(s)
     }
+}
+
+fn derive_data_dir(app: &AppHandle) -> Result<std::path::PathBuf, AppError> {
+    app.path().app_local_data_dir().map_err(|err| AppError::Io {
+        path: "(app_local_data_dir)".to_string(),
+        detail: err.to_string(),
+    })
 }

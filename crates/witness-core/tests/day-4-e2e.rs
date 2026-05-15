@@ -160,6 +160,14 @@ async fn day_4_e2e_capture_seal_verify_tamper() {
         signer_key_id: kid,
         inference_parameters: Some(witness_inference::inference_parameters_snapshot()),
         amends: None,
+        pinned_audio_sha256: Some(pipeline.transcribe.audio_sha256_hex.clone()),
+        pinned_image_sha256s: Some(
+            pipeline
+                .images
+                .iter()
+                .map(|i| i.image_sha256_hex.clone())
+                .collect(),
+        ),
     };
 
     let out_dir = artifacts_dir();
@@ -171,7 +179,7 @@ async fn day_4_e2e_capture_seal_verify_tamper() {
     let bundle_id = build_and_seal_bundle(&inputs, &signer, &bundle_path).expect("seal");
     println!("--- bundle sealed: id={bundle_id} path={bundle_path:?}");
 
-    let known = vec![fingerprint.sha256.clone()];
+    let known: Vec<witness_core::KnownFingerprint> = vec![fingerprint.clone().into()];
     let report = verify_bundle(&bundle_path, &known).expect("verify");
     assert!(report.is_ok(), "verification failed: {report:?}");
     println!("--- verify clean: {report:?}");

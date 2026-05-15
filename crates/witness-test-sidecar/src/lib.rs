@@ -11,6 +11,29 @@
 //!     unmodified.
 //!
 //! This is a mock at the network boundary, which CLAUDE.md explicitly allows.
+//!
+//! ## Release tripwire
+//!
+//! This crate is `publish = false` and gates its public surface behind the
+//! `test-fixtures` feature (default-on so workspace tests work without
+//! ceremony). Linking it from production code with `--features release`
+//! triggers a compile-time error; the capture binary never sets that
+//! feature, so reaching the error means a wiring mistake.
+
+#[cfg(feature = "release")]
+compile_error!(
+    "witness-test-sidecar is a development-only fake. \
+     it must never be linked from a production build. \
+     remove the `release` feature flag, or, if it appeared via a transitive dependency, \
+     replace the dependency with one that does not pull witness-test-sidecar in."
+);
+
+#[cfg(not(any(test, feature = "test-fixtures")))]
+compile_error!(
+    "witness-test-sidecar is gated behind the `test-fixtures` feature (default-on inside this workspace) \
+     or a `#[cfg(test)]` context. enabling `default-features = false` without re-enabling `test-fixtures` \
+     would let production code link the fake server; refusing to compile."
+);
 
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -73,6 +96,14 @@ pub struct FakeConfig {
     /// Tool-call arguments JSON returned by pass 1. If `None`, the server
     /// fabricates a minimal incident_report that conforms to the schema.
     pub incident_arguments_json: Option<String>,
+    /// When `Some`, every request must echo this value in the
+    /// `X-Witness-Token` header or the server responds 401. Mirrors the
+    /// production sidecar behaviour wired up under audit finding T-7/I-2.
+    pub required_token: Option<String>,
+    /// When `Some(n)`, the next `n` `/v1/chat/completions` responses are
+    /// padded with junk JSON to exceed the response cap. Lets tests assert
+    /// the streaming reader aborts rather than allocating to the cap.
+    pub oversized_response_bytes: Option<usize>,
 }
 
 impl Default for FakeConfig {
@@ -85,6 +116,8 @@ impl Default for FakeConfig {
             consistency_reason: "image shows the overturned truck and roadway fuel that the transcript describes".to_string(),
             reasoning_trace: "Thinking: the transcript names an overturned truck with leaking fuel. The image shows a truck on its side with fluid on the asphalt. The locations and key facts agree.\n\n{\"verdict\":\"consistent\",\"reason\":\"image shows the overturned truck and roadway fuel that the transcript describes\"}".to_string(),
             incident_arguments_json: None,
+            required_token: None,
+            oversized_response_bytes: None,
         }
     }
 }
@@ -156,6 +189,7 @@ struct HttpRequest {
     method: String,
     path: String,
     body: Vec<u8>,
+    headers: HashMap<String, String>,
 }
 
 struct HttpResponse {
@@ -229,7 +263,12 @@ async fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String
     }
     body.truncate(content_length);
 
-    Ok(HttpRequest { method, path, body })
+    Ok(HttpRequest {
+        method,
+        path,
+        body,
+        headers,
+    })
 }
 
 fn find_double_crlf(buf: &[u8]) -> Option<usize> {
@@ -263,6 +302,21 @@ async fn write_response(
 }
 
 fn route(req: &HttpRequest, config: &FakeConfig) -> HttpResponse {
+    if let Some(required) = config.required_token.as_ref() {
+        let provided = req
+            .headers
+            .get("x-witness-token")
+            .map(|s| s.as_str())
+            .unwrap_or("");
+        if provided != required.as_str() {
+            return HttpResponse {
+                status: 401,
+                body: json!({
+                    "error": "X-Witness-Token header missing or does not match the per-launch shared secret"
+                }),
+            };
+        }
+    }
     match (req.method.as_str(), req.path.as_str()) {
         ("GET", "/v1/models") => HttpResponse {
             status: 200,
@@ -275,11 +329,35 @@ fn route(req: &HttpRequest, config: &FakeConfig) -> HttpResponse {
                 }]
             }),
         },
+        ("POST", "/v1/handshake") => handle_handshake(&req.body),
         ("POST", "/v1/chat/completions") => handle_chat_completions(&req.body, config),
         _ => HttpResponse {
             status: 404,
             body: json!({ "error": format!("no route for {} {}", req.method, req.path) }),
         },
+    }
+}
+
+fn handle_handshake(body: &[u8]) -> HttpResponse {
+    let parsed: Value = match serde_json::from_slice(body) {
+        Ok(v) => v,
+        Err(err) => {
+            return HttpResponse {
+                status: 400,
+                body: json!({ "error": format!("invalid JSON: {err}") }),
+            };
+        }
+    };
+    let nonce = parsed.get("nonce").and_then(|v| v.as_str()).unwrap_or("");
+    if nonce.is_empty() {
+        return HttpResponse {
+            status: 400,
+            body: json!({ "error": "handshake body must carry a non-empty `nonce`" }),
+        };
+    }
+    HttpResponse {
+        status: 200,
+        body: json!({ "nonce": nonce }),
     }
 }
 
@@ -294,9 +372,19 @@ fn handle_chat_completions(body: &[u8], config: &FakeConfig) -> HttpResponse {
         }
     };
     let kind = classify(&parsed);
+    let mut response_body = build_response(kind, config);
+    if let Some(size) = config.oversized_response_bytes {
+        let mut padding = String::with_capacity(size);
+        for _ in 0..size {
+            padding.push('A');
+        }
+        if let Some(map) = response_body.as_object_mut() {
+            map.insert("oversize_padding".to_string(), Value::String(padding));
+        }
+    }
     HttpResponse {
         status: 200,
-        body: build_response(kind, config),
+        body: response_body,
     }
 }
 

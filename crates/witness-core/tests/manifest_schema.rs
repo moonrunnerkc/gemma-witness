@@ -201,6 +201,7 @@ fn manifest_with_amends_reference_validates() {
     manifest.amends = Some(AmendsReference {
         original_bundle_id: "00000000-1111-2222-3333-444444444444".to_string(),
         original_manifest_sha256: "9".repeat(64),
+        original_signer_key_id: "a".repeat(64),
         reason:
             "the prior bundle named the wrong intersection; this correction issues the right one"
                 .to_string(),
@@ -221,6 +222,7 @@ fn schema_rejects_amends_with_malformed_uuid() {
     manifest.amends = Some(AmendsReference {
         original_bundle_id: "not-a-uuid".to_string(),
         original_manifest_sha256: "9".repeat(64),
+        original_signer_key_id: "a".repeat(64),
         reason: "n/a".to_string(),
     });
     let payload = serde_json::to_value(&manifest).expect("serialize manifest");

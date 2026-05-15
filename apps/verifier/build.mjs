@@ -37,6 +37,10 @@ async function build() {
   const fpPath = path.join(__dirname, "known-fingerprints.json");
   const fpJson = fs.readFileSync(fpPath, "utf-8");
 
+  // Same treatment for trusted-signers.json. See audit finding V-1.
+  const trustedPath = path.join(__dirname, "trusted-signers.json");
+  const trustedJson = fs.readFileSync(trustedPath, "utf-8");
+
   const templatePath = path.join(__dirname, "index.html");
   let html = fs.readFileSync(templatePath, "utf-8");
 
@@ -44,6 +48,10 @@ async function build() {
   html = html.replace(
     "/*INLINE_FINGERPRINTS*/ null",
     fpJson
+  );
+  html = html.replace(
+    "/*INLINE_TRUSTED_SIGNERS*/ null",
+    trustedJson
   );
   html = html.replace("/*INLINE_JS*/", jsBundle);
 
@@ -72,7 +80,17 @@ async function build() {
     console.error("ERROR: runtime network calls found in bundled output");
     process.exit(1);
   }
-  console.log("Static checks passed: no external src/href, no fetch/XHR/importScripts.");
+  const cspMeta =
+    /<meta\s+http-equiv="Content-Security-Policy"\s+content="[^"]*default-src 'none'[^"]*"/i;
+  if (!cspMeta.test(htmlText)) {
+    console.error(
+      "ERROR: bundled verifier is missing the Content-Security-Policy meta tag. "
+        + "the directive `default-src 'none'` must survive inlining; "
+        + "check that index.html still carries it and the inlining step did not strip the <meta>.",
+    );
+    process.exit(1);
+  }
+  console.log("Static checks passed: no external src/href, no fetch/XHR/importScripts, CSP meta present.");
 }
 
 build().catch((err) => {

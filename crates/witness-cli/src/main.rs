@@ -144,7 +144,7 @@ fn verify(
             source
         )
     })?;
-    let known: Vec<String> = fp_doc
+    let known: Vec<witness_core::KnownFingerprint> = fp_doc
         .get("fingerprints")
         .and_then(|v| v.as_array())
         .ok_or_else(|| {
@@ -155,10 +155,14 @@ fn verify(
         })?
         .iter()
         .filter_map(|entry| {
-            entry
-                .get("sha256")
-                .and_then(|s| s.as_str())
-                .map(String::from)
+            let model_id = entry.get("model_id").and_then(|s| s.as_str())?;
+            let revision = entry.get("revision").and_then(|s| s.as_str())?;
+            let sha256 = entry.get("sha256").and_then(|s| s.as_str())?;
+            Some(witness_core::KnownFingerprint {
+                model_id: model_id.to_string(),
+                revision: revision.to_string(),
+                sha256: sha256.to_string(),
+            })
         })
         .collect();
     if known.is_empty() {

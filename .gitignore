@@ -34,9 +34,19 @@ apps/capture/dist/
 
 # Internal planning docs (keep local, not for the public repo)
 LIMITATIONS-RESOLUTION.md
+SECURITY-AUDIT.md
 
 # Demo bundle artifacts. The journal, screenshots, and CHECKSUMS.txt under
 # evidence/demo-*/ are committed for reproducibility; the .witness binaries
 # they describe are regenerated locally and not tracked.
 evidence/demo-*/bundles/
 
+# Secrets and key material. Test fixtures under tests/fixtures/ are exempt so
+# round-trip fixtures stay tracked.
+.env
+.env.local
+*.pem
+*.key
+id_ed25519*
+*.witness
+!tests/fixtures/**/*.witness

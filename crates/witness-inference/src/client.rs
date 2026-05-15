@@ -12,7 +12,10 @@ use serde_json::{json, Value};
 use witness_core::IncidentReport;
 
 use crate::error::InferenceError;
-use crate::http::{DEFAULT_ENDPOINT, DEFAULT_MODEL};
+use crate::http::{
+    assert_endpoint_is_loopback, DEFAULT_ENDPOINT, DEFAULT_MODEL, MAX_RESPONSE_BYTES,
+    SIDECAR_TOKEN_ENV, SIDECAR_TOKEN_HEADER,
+};
 use crate::response::{extract_tool_arguments, TOOL_NAME};
 
 /// Sampling temperature.
@@ -36,6 +39,7 @@ pub const DEFAULT_MAX_RETRIES: u32 = 3;
 /// Token cap on the structure-incident pass. Public for manifest recording.
 pub const DEFAULT_MAX_TOKENS: u32 = 800;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 /// Fixed instruction prompt for the structure-incident pass. Public so the
 /// manifest can record SHA-256(`SYSTEM_PROMPT`) without coupling to the
 /// client internals.
@@ -83,8 +87,10 @@ impl InferenceClient {
 
     /// Build a client targeting a specific endpoint.
     pub fn with_endpoint(endpoint: &str) -> Result<Self, InferenceError> {
+        assert_endpoint_is_loopback(endpoint)?;
         let http = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
+            .connect_timeout(CONNECT_TIMEOUT)
             .build()
             .map_err(|source| InferenceError::Transport {
                 endpoint: endpoint.to_string(),
@@ -219,10 +225,13 @@ impl InferenceClient {
             "{}/v1/chat/completions",
             self.endpoint.trim_end_matches('/')
         );
-        let response = self
-            .http
-            .post(&url)
-            .json(body)
+        let mut request = self.http.post(&url).json(body);
+        if let Ok(token) = std::env::var(SIDECAR_TOKEN_ENV) {
+            if !token.is_empty() {
+                request = request.header(SIDECAR_TOKEN_HEADER, token);
+            }
+        }
+        let mut response = request
             .send()
             .await
             .map_err(|source| InferenceError::Transport {
@@ -230,13 +239,38 @@ impl InferenceClient {
                 source,
             })?;
         let status = response.status();
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|source| InferenceError::Transport {
-                endpoint: self.endpoint.clone(),
-                source,
-            })?;
+        if let Some(content_length) = response.content_length() {
+            if content_length as usize > MAX_RESPONSE_BYTES {
+                return Err(InferenceError::ResponseTooLarge {
+                    endpoint: self.endpoint.clone(),
+                    cap_bytes: MAX_RESPONSE_BYTES,
+                    seen_bytes: content_length as usize,
+                });
+            }
+        }
+        let mut bytes: Vec<u8> = Vec::new();
+        loop {
+            let chunk = response
+                .chunk()
+                .await
+                .map_err(|source| InferenceError::Transport {
+                    endpoint: self.endpoint.clone(),
+                    source,
+                })?;
+            match chunk {
+                Some(buf) => {
+                    if bytes.len() + buf.len() > MAX_RESPONSE_BYTES {
+                        return Err(InferenceError::ResponseTooLarge {
+                            endpoint: self.endpoint.clone(),
+                            cap_bytes: MAX_RESPONSE_BYTES,
+                            seen_bytes: bytes.len() + buf.len(),
+                        });
+                    }
+                    bytes.extend_from_slice(&buf);
+                }
+                None => break,
+            }
+        }
         if !status.is_success() {
             return Err(InferenceError::BadStatus {
                 endpoint: self.endpoint.clone(),

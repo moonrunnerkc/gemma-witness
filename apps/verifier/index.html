@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gemma.Witness Verifier</title>
 <style>
@@ -19,6 +20,7 @@
 </div>
 <script>
 window.__KNOWN_FINGERPRINTS__ = /*INLINE_FINGERPRINTS*/ null;
+window.__TRUSTED_SIGNERS__ = /*INLINE_TRUSTED_SIGNERS*/ null;
 /*INLINE_JS*/
 </script>
 </body>

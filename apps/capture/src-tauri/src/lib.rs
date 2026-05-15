@@ -3,8 +3,10 @@
 use std::sync::Arc;
 
 use specta_typescript::Typescript;
+use tauri::Manager;
 use tauri_specta::{collect_commands, Builder};
 use tokio::sync::Mutex;
+use tracing_subscriber::EnvFilter;
 
 pub mod audio;
 pub mod commands;
@@ -12,7 +14,7 @@ mod error;
 mod state;
 
 use crate::commands::audio_commands::{start_recording_cmd, stop_recording_cmd};
-use crate::commands::device::initialize_device;
+use crate::commands::device::{discard_capture_cmd, initialize_device};
 use crate::commands::image_commands::pick_images_cmd;
 use crate::commands::inference_commands::run_inference_cmd;
 use crate::commands::seal_commands::seal_bundle_cmd;
@@ -25,7 +27,8 @@ fn specta_builder() -> Builder<tauri::Wry> {
         stop_recording_cmd,
         pick_images_cmd,
         run_inference_cmd,
-        seal_bundle_cmd
+        seal_bundle_cmd,
+        discard_capture_cmd
     ])
 }
 
@@ -53,7 +56,44 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(shared)
+        .setup(|app| {
+            install_tracing_subscriber(app.handle())?;
+            Ok(())
+        })
         .invoke_handler(builder.invoke_handler())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Install a `tracing_subscriber` writing to `app_local_data_dir/logs/<date>.log`.
+/// Filtering honors `RUST_LOG` per `EnvFilter::from_default_env()`.
+///
+/// Audit finding T-4: previously `tracing-subscriber` was a dependency but
+/// no subscriber was ever installed, so the single `tracing::error!` call
+/// inside the cpal stream error callback dropped silently. Initializing
+/// here gives the security event store a real destination.
+fn install_tracing_subscriber(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let data_dir = app.path().app_local_data_dir()?;
+    let logs_dir = data_dir.join("logs");
+    std::fs::create_dir_all(&logs_dir)?;
+    let date = chrono::Utc::now().format("%Y-%m-%d");
+    let log_path = logs_dir.join(format!("{date}.log"));
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)?;
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info,gemma_witness_capture_lib=debug"));
+    let subscriber_install = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::sync::Mutex::new(file))
+        .with_ansi(false)
+        .try_init();
+    if let Err(err) = subscriber_install {
+        // A second initialization attempt (e.g., in `cargo test` parallel
+        // contexts) is non-fatal. Log to stderr so the test harness picks it
+        // up, but allow the app to continue.
+        eprintln!("tracing_subscriber already initialized: {err}");
+    }
+    Ok(())
 }

@@ -20,6 +20,7 @@ pub const MANIFEST_VERSION: u32 = 1;
 
 /// Top-level signed document of a `.witness` bundle.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Manifest {
     pub manifest_version: u32,
     pub bundle_id: String,
@@ -36,18 +37,31 @@ pub struct Manifest {
 }
 
 /// Reference to a prior bundle that this manifest corrects or supersedes.
+///
+/// `original_signer_key_id` binds the amendment to the original signer.
+/// Without it, anyone with their own valid key could sign an "amendment" of
+/// any other person's bundle. Verifiers MUST refuse to treat an amendment as
+/// a continuation of the chain when the amending bundle's
+/// `signer.key_id` does not match this field. Renderers SHOULD surface the
+/// mismatch prominently rather than silently downgrading the link.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AmendsReference {
     /// UUID v4 of the original bundle.
     pub original_bundle_id: String,
     /// Hex SHA-256 of the original bundle's JCS-canonicalized manifest.
     pub original_manifest_sha256: String,
+    /// `signer.key_id` of the original bundle. The amending bundle's
+    /// `signer.key_id` must equal this value for the amendment chain to be
+    /// trusted.
+    pub original_signer_key_id: String,
     /// One-paragraph explanation of why this bundle amends the original.
     pub reason: String,
 }
 
 /// Signer metadata recorded inside the manifest itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SignerInfo {
     pub algorithm: String,
     pub public_key_pem: String,
@@ -56,6 +70,7 @@ pub struct SignerInfo {
 
 /// One asset entry. `path` is the in-zip path, `sha256` is hex(SHA-256(raw bytes)).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AssetEntry {
     pub path: String,
     pub media_type: String,
@@ -71,6 +86,7 @@ pub struct AssetEntry {
 /// working. The matching JSON Schema lists each optional field in
 /// `properties` but not in `required`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Assertions {
     #[serde(rename = "gemma.witness.model_fingerprint")]
     pub model_fingerprint: ModelFingerprint,
@@ -98,6 +114,7 @@ pub struct Assertions {
 
 /// Identity of the model that produced the reasoning + structured report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ModelFingerprint {
     pub model_id: String,
     pub revision: String,
@@ -106,6 +123,7 @@ pub struct ModelFingerprint {
 
 /// Pointer at the verbatim thinking-channel asset stored in the bundle.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReasoningTrace {
     pub asset_path: String,
     pub sha256: String,
@@ -114,6 +132,7 @@ pub struct ReasoningTrace {
 
 /// Gemma's audio/image consistency call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConsistencyVerdict {
     pub verdict: ConsistencyLabel,
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -130,6 +149,7 @@ pub enum ConsistencyLabel {
 
 /// Environment in which the bundle was sealed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CaptureEnvironment {
     pub os: String,
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -141,6 +161,7 @@ pub struct CaptureEnvironment {
 /// Detached signature document stored alongside the manifest inside the
 /// `.witness` ZIP.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SignatureDocument {
     pub algorithm: String,
     pub key_id: String,

@@ -8,7 +8,7 @@
 
 use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
 use ed25519_dalek::pkcs8::EncodePublicKey;
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use sha2::{Digest, Sha256};
 
 use crate::error::WitnessCoreError;
@@ -26,9 +26,16 @@ pub fn sign(key: &SigningKey, payload: &[u8]) -> Signature {
 
 /// Verify `signature_bytes` against `payload` using the PKCS#8 PEM `public_key_pem`.
 ///
+/// Uses strict RFC 8032 verification: rejects signatures with non-canonical
+/// `s` scalars (malleability) and rejects R points in a small torsion
+/// subgroup. This is the verification path other strict-mode third-party
+/// verifiers will use; matching that behavior here closes cross-verifier
+/// drift on the same bytes.
+///
 /// # Errors
 /// Returns [`WitnessCoreError::BadPublicKey`] if the PEM does not parse, or
-/// [`WitnessCoreError::SignatureInvalid`] if the signature does not match.
+/// [`WitnessCoreError::SignatureInvalid`] if the signature does not match
+/// or fails strict canonical-form checks.
 pub fn verify_pem(
     public_key_pem: &str,
     payload: &[u8],
@@ -37,7 +44,7 @@ pub fn verify_pem(
     let verifying = parse_public_key_pem(public_key_pem)?;
     let signature = Signature::from_bytes(signature_bytes);
     verifying
-        .verify(payload, &signature)
+        .verify_strict(payload, &signature)
         .map_err(|_| WitnessCoreError::SignatureInvalid)
 }
 

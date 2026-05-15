@@ -27,6 +27,13 @@ fn main() {
         .and_then(|v| v.as_array())
         .expect("index.json missing entries[]");
 
+    if entries.is_empty() {
+        panic!(
+            "{} declares an empty entries[]. the fingerprint registry must list at least one (model_id, revision) entry; a shipping binary with no pinned fingerprints would fail every model_fingerprint check at verification time. add an entry via tools/seed-fingerprints before building.",
+            index_path.display()
+        );
+    }
+
     let mut out = String::new();
     out.push_str("&[\n");
     for entry in entries {

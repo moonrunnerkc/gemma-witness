@@ -89,6 +89,8 @@ fn generate_day_4_fixture() {
         signer_key_id: kid,
         inference_parameters: None,
         amends: None,
+        pinned_audio_sha256: None,
+        pinned_image_sha256s: None,
     };
 
     let mut out = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

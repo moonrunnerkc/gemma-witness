@@ -74,6 +74,17 @@ pub enum WitnessCoreError {
     #[error("bundle structure invalid: {detail}")]
     BundleStructure { detail: String },
 
+    /// A ZIP entry is rejected as unsafe (path traversal, absolute path,
+    /// non-UTF-8 name, or a duplicate of a prior entry).
+    #[error("bundle ZIP entry rejected: {detail}")]
+    UnsafeZipEntry { detail: String },
+
+    /// A ZIP archive's declared or actual decompressed size exceeded the
+    /// configured cap. Returned when verifying a bundle from an untrusted
+    /// source as a backstop against zip-bomb DoS.
+    #[error("bundle ZIP exceeded size cap: {detail}")]
+    ZipTooLarge { detail: String },
+
     /// The provided PEM-encoded public key could not be parsed.
     #[error("public key PEM did not parse: {detail}. expected PKCS#8 PEM for an Ed25519 key.")]
     BadPublicKey { detail: String },
@@ -103,4 +114,33 @@ pub enum WitnessCoreError {
     /// advisory check could not run, not that the audio itself is invalid.
     #[error("audio could not be decoded for acoustic fingerprinting: {detail}. the SHA-256 asset hash still pins the bytes.")]
     AudioDecode { detail: String },
+
+    /// At seal time the asset bytes on disk no longer hash to the value the
+    /// inference pipeline read. A same-user-account process (or a cloud-sync
+    /// service like iCloud, Dropbox, Syncthing) may have swapped the file
+    /// between the inference review step and seal, which would let Gemma's
+    /// reasoning describe one file while a different file is sealed into the
+    /// bundle. Re-record or re-pick the asset and run inference again.
+    #[error(
+        "asset at {path:?} was modified between inference and seal: \
+         the inference pipeline saw sha256 {pinned_sha256}, seal-time bytes hash to {seal_sha256}. \
+         re-record or re-pick the asset and run inference again so the model and the bundle agree."
+    )]
+    AssetTampered {
+        path: PathBuf,
+        pinned_sha256: String,
+        seal_sha256: String,
+    },
+
+    /// Caller passed a different number of pinned image hashes than image
+    /// paths. Indicates a wiring bug in the capture pipeline, not user
+    /// input.
+    #[error(
+        "pinned image hash list length {pinned_count} does not match image_paths length {seal_count}. \
+         this is a wiring bug in the capture pipeline; report it via /help."
+    )]
+    PinnedImageHashCountMismatch {
+        pinned_count: usize,
+        seal_count: usize,
+    },
 }

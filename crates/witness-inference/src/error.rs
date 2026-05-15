@@ -64,4 +64,35 @@ pub enum InferenceError {
         "verdict pass did not return a recognised label: {detail}. raw model content: {raw:?}."
     )]
     BadVerdict { raw: String, detail: String },
+
+    /// The sidecar returned more bytes than the per-response cap allows. A
+    /// legitimate Gemma 4 chat completion fits in under 100 KB; anything past
+    /// the cap indicates a misbehaving or compromised sidecar.
+    #[error(
+        "sidecar response from {endpoint} exceeded the response-size cap of {cap_bytes} bytes (seen {seen_bytes} bytes). \
+         a runaway or compromised sidecar can OOM the capture process; aborting before the body is materialized."
+    )]
+    ResponseTooLarge {
+        endpoint: String,
+        cap_bytes: usize,
+        seen_bytes: usize,
+    },
+
+    /// The configured endpoint is not a loopback address. The capture app is
+    /// offline-only; calling a non-loopback host would defeat that guarantee
+    /// and ship audio/image content to whatever responded.
+    #[error(
+        "sidecar endpoint {endpoint:?} is not loopback. only http://127.0.0.1, http://[::1], and unix:// endpoints are permitted; \
+         the capture app must remain offline and trust only a local process."
+    )]
+    EndpointNotLoopback { endpoint: String },
+
+    /// The /v1/handshake nonce echo did not match. The local sidecar either
+    /// is not configured with the per-launch shared secret or is not the
+    /// process the capture app expects.
+    #[error(
+        "sidecar handshake at {endpoint} failed: {detail}. \
+         restart the app so a fresh token is issued, and confirm no other process is bound to the sidecar port."
+    )]
+    HandshakeFailed { endpoint: String, detail: String },
 }

@@ -6,12 +6,15 @@ import {
 import { verifySignature } from "./verify-signature";
 import { verifyAssetHashes } from "./verify-asset-hashes";
 import { verifyModelFingerprint } from "./verify-model-fingerprint";
+import { verifyAmendmentChain } from "./verify-amendment-chain";
+import { verifySignerIdentity } from "./verify-signer-identity";
 import type {
   Manifest,
   SignatureDocument,
   VerificationResult,
   CheckOutcome,
   KnownFingerprints,
+  TrustedSigners,
 } from "./types";
 
 /**
@@ -28,6 +31,7 @@ import type {
 export async function verifyBundle(
   buffer: ArrayBuffer,
   knownFingerprints: KnownFingerprints,
+  trustedSigners: TrustedSigners,
 ): Promise<VerificationResult> {
   let manifest: Manifest;
   let sigDoc: SignatureDocument;
@@ -81,17 +85,68 @@ export async function verifyBundle(
 
   const checks: CheckOutcome[] = [];
 
-  const signatureCheck = await verifySignature(manifest, sigDoc);
-  checks.push(signatureCheck);
-
-  const assetCheck = verifyAssetHashes(manifest, entries);
-  checks.push(assetCheck);
-
-  const fingerprintCheck = verifyModelFingerprint(manifest, knownFingerprints);
-  checks.push(fingerprintCheck);
+  checks.push(await runCheck("Signature valid", () => verifySignature(manifest, sigDoc)));
+  checks.push(runCheckSync("Assets untampered", () => verifyAssetHashes(manifest, entries)));
+  checks.push(
+    runCheckSync("Model fingerprint known", () =>
+      verifyModelFingerprint(manifest, knownFingerprints),
+    ),
+  );
+  checks.push(
+    runCheckSync("Signed by a known witness", () =>
+      verifySignerIdentity(manifest, trustedSigners),
+    ),
+  );
+  if (manifest.amends) {
+    checks.push(
+      runCheckSync("Amendment chain consistent", () =>
+        verifyAmendmentChain(manifest),
+      ),
+    );
+  }
 
   const ok = checks.every((c) => c.passed);
   return { ok, checks, manifest, error: null };
+}
+
+/**
+ * Run an async check function and convert any thrown error into a failing
+ * {@link CheckOutcome}. Without this, a bug in any one check (or a malformed
+ * but parseable bundle that trips an index-into-undefined) would bubble out
+ * of `verifyBundleLogic` as an unhandled promise rejection, leaving the
+ * previous render on screen.
+ */
+async function runCheck(
+  name: string,
+  fn: () => Promise<CheckOutcome>,
+): Promise<CheckOutcome> {
+  try {
+    return await fn();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      name,
+      passed: false,
+      details: [
+        `internal verifier error while running "${name}": ${message}. the bundle may be malformed in a way the verifier did not anticipate.`,
+      ],
+    };
+  }
+}
+
+function runCheckSync(name: string, fn: () => CheckOutcome): CheckOutcome {
+  try {
+    return fn();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      name,
+      passed: false,
+      details: [
+        `internal verifier error while running "${name}": ${message}. the bundle may be malformed in a way the verifier did not anticipate.`,
+      ],
+    };
+  }
 }
 
 function routeVersion(manifest: Manifest): CheckOutcome {

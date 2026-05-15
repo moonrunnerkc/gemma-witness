@@ -99,6 +99,8 @@ fn make_inputs(
         signer_key_id: kid,
         inference_parameters: None,
         amends,
+        pinned_audio_sha256: None,
+        pinned_image_sha256s: None,
     }
 }
 
@@ -136,17 +138,18 @@ fn amendment_references_original_manifest_sha_and_both_verify() {
 
     let amendment_inputs = make_inputs(
         pem,
-        kid,
+        kid.clone(),
         "amendment. the intersection was oak and seventh, not oak and main.",
         Some(AmendsReference {
             original_bundle_id: original_bundle_id.clone(),
             original_manifest_sha256: original_manifest_sha256.clone(),
+            original_signer_key_id: kid.clone(),
             reason: "wrong cross-street; correcting before the editor publishes".to_string(),
         }),
     );
     build_and_seal_bundle(&amendment_inputs, &signer, &amendment_path).expect("seal amendment");
 
-    let known = vec![fingerprint().sha256];
+    let known: Vec<witness_core::KnownFingerprint> = vec![fingerprint().into()];
 
     let original_report = verify_bundle(&original_path, &known).expect("verify original");
     assert!(
@@ -169,6 +172,87 @@ fn amendment_references_original_manifest_sha_and_both_verify() {
         .expect("amendment manifest must carry an amends field");
     assert_eq!(amends.original_bundle_id, original_bundle_id);
     assert_eq!(amends.original_manifest_sha256, original_manifest_sha256);
+    assert_eq!(amends.original_signer_key_id, kid);
+}
+
+#[test]
+fn amendment_signed_by_different_key_fails_chain_verification() {
+    let tmp = TempDir::new().expect("tmpdir");
+    let original_path = tmp.path().join("original.witness");
+    let amendment_path = tmp.path().join("amendment.witness");
+
+    let original_key = generate_signing_key();
+    let original_verifying = original_key.verifying_key();
+    let original_pem = encode_public_key_pem(&original_verifying).expect("pem");
+    let original_kid = key_id(&original_verifying);
+    let original_signer = EphemeralSigner {
+        key: original_key.clone(),
+    };
+
+    let original_inputs = make_inputs(
+        original_pem.clone(),
+        original_kid.clone(),
+        "original report",
+        None,
+    );
+    let original_bundle_id =
+        build_and_seal_bundle(&original_inputs, &original_signer, &original_path)
+            .expect("seal original");
+
+    let entries = read_bundle(&original_path).expect("read original");
+    let manifest_bytes = entries
+        .get(paths::MANIFEST)
+        .expect("original manifest entry");
+    let original_manifest: Manifest =
+        serde_json::from_slice(manifest_bytes).expect("parse original manifest");
+    let canonical = canonicalize(&original_manifest).expect("canonicalize original manifest");
+    let original_manifest_sha256 = hex::encode(Sha256::digest(&canonical));
+
+    // Attacker keypair, not the original signer.
+    let attacker_key = generate_signing_key();
+    let attacker_verifying = attacker_key.verifying_key();
+    let attacker_pem = encode_public_key_pem(&attacker_verifying).expect("attacker pem");
+    let attacker_kid = key_id(&attacker_verifying);
+    let attacker_signer = EphemeralSigner { key: attacker_key };
+
+    // The attacker forges an "amendment" referencing the real original but
+    // signed with their own key. The amends back-link still names the real
+    // original signer, because that is the only value the attacker would
+    // pick (anything else immediately tells a verifier the chain is broken).
+    let attacker_amendment_inputs = make_inputs(
+        attacker_pem,
+        attacker_kid.clone(),
+        "attacker amendment claiming the original was fabricated",
+        Some(AmendsReference {
+            original_bundle_id: original_bundle_id.clone(),
+            original_manifest_sha256: original_manifest_sha256.clone(),
+            original_signer_key_id: original_kid.clone(),
+            reason: "attacker forging an amendment they did not sign".to_string(),
+        }),
+    );
+    build_and_seal_bundle(
+        &attacker_amendment_inputs,
+        &attacker_signer,
+        &amendment_path,
+    )
+    .expect("attacker seal succeeds: individual bundle is self-consistent");
+
+    let known: Vec<witness_core::KnownFingerprint> = vec![fingerprint().into()];
+
+    let amendment_report =
+        witness_core::verify_amendment_chain(&amendment_path, &known).expect("verify chain");
+    assert!(
+        !amendment_report.is_ok(),
+        "amendment signed by attacker_kid={attacker_kid} but back-linked to original_kid={original_kid} must NOT pass chain verification: {amendment_report:?}"
+    );
+    let mismatched = amendment_report
+        .details
+        .iter()
+        .any(|d| d.contains("does not match") && d.contains("original_signer_key_id"));
+    assert!(
+        mismatched,
+        "verifier must explicitly surface the original_signer_key_id mismatch: {amendment_report:?}"
+    );
 }
 
 #[test]

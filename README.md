@@ -136,6 +136,20 @@ Current implementation includes:
 
 Cross-platform live capture remains partially unverified outside the Apple Silicon path.
 
+## Security and supply chain
+
+Tamper-evidence in this project depends on more than a signature: the build, the verifier, the inference boundary, and the release pipeline all have to hold. Each of the properties below is enforced in code and regression-tested in CI.
+
+- **Signed releases.** Tagged releases run `.github/workflows/release.yml`, which builds on macOS, Linux, and Windows, writes `SHASUMS256.txt`, signs it via Sigstore keyless cosign, and attaches SLSA v1 build provenance. The cosign OIDC identity that verifiers MUST pin is published in [`RELEASE.md`](RELEASE.md).
+- **Strict signature verification.** The Rust verifier uses Ed25519 `verify_strict` (RFC 8032 §5.1.7) and asserts every field of `signature.json` (algorithm, canonicalization, signed payload, key id) against the manifest before checking the signature. The JS verifier enforces the same gates and adds a "signed by a known witness" check against an inlined `trusted-signers.json`.
+- **Bundle integrity.** Both verifiers reject unexpected ZIP entries, duplicate entries, path-traversal names, and zip-bomb payloads (per-entry and total-decompressed caps). The manifest's structural fields are checked with `deny_unknown_fields` (Rust) and a traversed `validateManifest` (JS) before any signature work.
+- **Cross-language canonicalization parity.** Edge-case JSON values (subnormals, escaped Unicode, integers near 2^53, deeply nested keys) are pinned to byte-identical outputs by a conformance suite that runs in CI on every push.
+- **Sidecar boundary.** The capture app generates a 32-byte per-launch token and rejects any non-loopback sidecar endpoint. Inference responses are streamed with a 10 MiB cap. Picked images are staged into a per-capture UUID directory before inference so the model and the seal step read identical bytes.
+- **Build supply chain.** Every GitHub Action is pinned to a 40-character commit SHA, every cargo invocation in CI carries `--locked`, and `cargo audit`, `cargo deny`, and `pnpm audit` run on every push. `.github/dependabot.yml` opens weekly SHA-bump PRs.
+- **Fingerprint provenance.** The shipped MLX entry was re-seeded against the Hugging Face LFS oid (`verified_by: "huggingface-lfs+local-recompute"`).
+
+These are tamper-evidence guarantees about the bundle and its distribution chain. They are not guarantees against a coerced reporter, a pre-compromised device, or social engineering of the trust-anchor lists. See the [Threat model](#threat-model) section for the full delineation.
+
 ## Installation
 
 ### Prerequisites
@@ -186,17 +200,27 @@ mistralrs:
 
 ```bash
 ./inference/mistralrs-sidecar/start.sh
-# After the model is first downloaded, seed its fingerprint in the unified registry:
-cargo run -p seed-fingerprints -- --model-id google/gemma-4-E4B-it --revision main
 ```
+
+The pinned `mistralrs` version is enforced by the start script; see
+`inference/mistralrs-sidecar/README.md` for the pinned `cargo install
+--locked --git ... --rev <SHA>` incantation. To pin a new model revision,
+run `cargo run -p seed-fingerprints -- --model-id <id> --revision <rev>`
+with the weights cached locally. The seeder cross-checks the local
+`model.safetensors` SHA-256 against the Hugging Face LFS oid and refuses
+to write on mismatch.
 
 Transformers fallback:
 
 ```bash
 cd inference/transformers-sidecar
-pip install -r requirements.txt
-python start.py
+uv sync
+uv run python start.py
 ```
+
+`uv sync` is the only supported install path; the previous unpinned
+`requirements.txt` was removed to close the "PyPI typo-squat lands on the
+sidecar process" supply-chain gap.
 
 All sidecars expose an OpenAI-compatible API on `127.0.0.1:8080`.
 
@@ -310,12 +334,15 @@ cargo tarpaulin --workspace --out Html --out Xml -- --test-threads=1
 
 GitHub Actions currently runs:
 
-- Rust build and test
+- Rust build and test (every `cargo` invocation pinned with `--locked`)
 - clippy with `-D warnings`
 - coverage generation
 - verifier end-to-end tests
+- canonicalization conformance (cross-language byte-equality between `serde_jcs` and `canonicalize`)
 - degraded-path Rust tests
 - em-dash scan enforcement
+- supply-chain audit: `cargo audit`, `cargo deny check`, `pnpm audit` on both workspaces
+- signed-release workflow on `push: tags: ['v*']` (cosign + SLSA v1 provenance)
 
 The full live-model end-to-end test (`crates/witness-core/tests/day-4-e2e.rs`) is a release gate, not a per-push gate. The GitHub macOS runner cannot host the Gemma 4 model, so the same test compiles and exits via its skip path in CI. The hermetic e2e against `witness-test-sidecar` runs on every push on Linux, Windows, and macOS, covering the schema-drift class of bugs. The maintainer runs the live e2e locally before tagging a release; see [`RELEASE.md`](RELEASE.md).
 
@@ -356,7 +383,7 @@ A compromised user account can sign arbitrary bundles.
 
 Fingerprints live in a single registry at `inference/fingerprints/`, embedded into the capture binary at compile time via the `witness-fingerprints` crate. The seal command queries the live sidecar's `/v1/models` and looks up the matching entry, so the bundle records whichever model the running sidecar is actually serving.
 
-`tools/seed-fingerprints` is the only supported way to add or update an entry. It fetches the Hugging Face LFS oid for a pinned `(model_id, revision)`, recomputes the SHA-256 of the locally cached `model.safetensors`, and refuses to write on mismatch. The MLX entry seeded prior to that tool's introduction is marked `verified_by: "local-roundtrip"` and will be re-stamped as `huggingface-lfs+local-recompute` the next time a maintainer with the model cached runs the seeder.
+`tools/seed-fingerprints` is the only supported way to add or update an entry. It fetches the Hugging Face LFS oid for a pinned `(model_id, revision)`, recomputes the SHA-256 of the locally cached `model.safetensors`, and refuses to write on mismatch. The shipped MLX entry carries `verified_by: "huggingface-lfs+local-recompute"`, meaning both the HF LFS oid and a fresh local hash were cross-checked at seed time. Re-run the seeder before any release that bumps the pinned revision; see [`RELEASE.md`](RELEASE.md).
 
 ### Audio model behavior
 

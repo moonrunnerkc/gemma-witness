@@ -15,6 +15,12 @@ use hound::{SampleFormat as HoundFormat, WavSpec, WavWriter};
 
 use crate::error::AppError;
 
+/// Tauri event name emitted when the cpal input stream raises an error
+/// mid-recording. The frontend listens for this and surfaces a "microphone
+/// disconnected" or similar message; without it, the previous code dropped
+/// the error silently and let the user seal an empty WAV (audit T-4).
+pub const STREAM_ERROR_EVENT: &str = "gemma-witness://audio-stream-error";
+
 /// Target sample rate (matches Gemma 4 E4B audio input).
 pub const TARGET_SAMPLE_RATE: u32 = 16_000;
 /// Hard cap on recording length, in seconds.
@@ -27,6 +33,7 @@ pub struct RecordingStopper {
     sample_rate_hz: u32,
     channels: u16,
     writer: Arc<Mutex<Option<WavWriter<std::io::BufWriter<std::fs::File>>>>>,
+    stream_error: Arc<Mutex<Option<String>>>,
     _stream: SendStream,
 }
 
@@ -48,7 +55,18 @@ pub struct RecordingConfig {
 
 /// Start a recording, writing 16 kHz mono PCM to `out_path`. The returned
 /// [`RecordingStopper`] must be retained until the caller is ready to stop.
-pub fn start_recording(out_path: &Path) -> Result<(RecordingStopper, RecordingConfig), AppError> {
+///
+/// `on_stream_error` runs synchronously inside cpal's error callback when
+/// the input stream fails mid-recording. Callers typically wire this to a
+/// Tauri event emitter so the UI can surface "microphone disconnected"
+/// rather than silently writing zero samples (audit T-4).
+pub fn start_recording<F>(
+    out_path: &Path,
+    on_stream_error: F,
+) -> Result<(RecordingStopper, RecordingConfig), AppError>
+where
+    F: Fn(&str) + Send + Sync + 'static,
+{
     let host = cpal::default_host();
     let device = host
         .default_input_device()
@@ -80,12 +98,25 @@ pub fn start_recording(out_path: &Path) -> Result<(RecordingStopper, RecordingCo
 
     let stop_flag = Arc::new(AtomicBool::new(false));
     let samples_written = Arc::new(AtomicU64::new(0));
+    let stream_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
     let stop_flag_cb = Arc::clone(&stop_flag);
     let samples_written_cb = Arc::clone(&samples_written);
     let writer_cb = Arc::clone(&writer);
+    let stream_error_cb = Arc::clone(&stream_error);
 
-    let err_fn = |err| tracing::error!(?err, "cpal input stream error");
+    let on_error = std::sync::Arc::new(on_stream_error);
+    let err_fn = {
+        let on_error = on_error.clone();
+        move |err: cpal::StreamError| {
+            let formatted = format!("{err}");
+            tracing::error!(error = %formatted, "cpal input stream error");
+            if let Ok(mut slot) = stream_error_cb.lock() {
+                *slot = Some(formatted.clone());
+            }
+            on_error(&formatted);
+        }
+    };
 
     let downmix_and_resample = move |input: &[f32]| {
         if stop_flag_cb.load(Ordering::Relaxed) {
@@ -176,6 +207,7 @@ pub fn start_recording(out_path: &Path) -> Result<(RecordingStopper, RecordingCo
             sample_rate_hz: TARGET_SAMPLE_RATE,
             channels: 1,
             writer,
+            stream_error,
             _stream: SendStream(stream),
         },
         RecordingConfig {
@@ -187,6 +219,9 @@ pub fn start_recording(out_path: &Path) -> Result<(RecordingStopper, RecordingCo
 
 impl RecordingStopper {
     /// Stop the stream, flush the WAV writer, and return the duration in ms.
+    /// Surfaces any cpal stream error that fired during recording as
+    /// [`AppError::AudioStream`] so the frontend learns about a silently
+    /// failed capture (audit T-4).
     pub fn finish(self) -> Result<RecordingSummary, AppError> {
         self.stop_flag.store(true, Ordering::Relaxed);
         let mut guard = self.writer.lock().map_err(|_| AppError::AudioStream {
@@ -196,6 +231,11 @@ impl RecordingStopper {
             writer.finalize().map_err(|err| AppError::AudioStream {
                 detail: format!("finalize WAV: {err}"),
             })?;
+        }
+        if let Ok(stream_err) = self.stream_error.lock() {
+            if let Some(detail) = stream_err.clone() {
+                return Err(AppError::AudioStream { detail });
+            }
         }
         let samples = self.samples_written.load(Ordering::Relaxed);
         let duration_ms = (samples * 1000) / self.sample_rate_hz as u64;

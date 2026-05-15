@@ -23,6 +23,7 @@ uuid.workspace = true
 rand.workspace = true
 rustfft.workspace = true
 hound.workspace = true
+zeroize = "1.8"
 
 [features]
 default = []

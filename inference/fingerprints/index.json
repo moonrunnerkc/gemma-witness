@@ -6,11 +6,6 @@
       "model_id": "mlx-community/gemma-4-e4b-it-4bit",
       "revision": "cc3b666c01c20395e0dcebd53854504c7d9821f9",
       "file": "mlx-community__gemma-4-e4b-it-4bit__cc3b666c.json"
-    },
-    {
-      "model_id": "google/gemma-4-E4B-it",
-      "revision": "main",
-      "file": "google__gemma-4-E4B-it__main.json"
     }
   ]
 }

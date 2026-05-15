@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 /// Top-level optional assertion. Serialized to the `gemma.witness.inference_parameters`
 /// key when present, omitted entirely when absent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct InferenceParameters {
     /// Per-pass parameters keyed by pass name. Lexicographic key ordering
     /// drops out of JCS canonicalization at sign time.
@@ -27,6 +28,7 @@ pub struct InferenceParameters {
 
 /// Parameters for one pass.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PassParameters {
     pub temperature: f32,
     #[serde(skip_serializing_if = "Option::is_none", default)]

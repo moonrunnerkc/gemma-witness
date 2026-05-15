@@ -20,7 +20,6 @@ use crate::{IncidentReport, InferenceParameters};
 pub mod paths {
     pub const MANIFEST: &str = "manifest.json";
     pub const SIGNATURE: &str = "signature.json";
-    pub const PUBLIC_KEY_PEM: &str = "public_key.pem";
     pub const AUDIO: &str = "assets/audio.wav";
     pub const REASONING: &str = "assets/reasoning.txt";
     /// Returns the in-zip path for image index `i`.
@@ -59,6 +58,17 @@ pub struct BundleInputs {
     /// when issuing a correction or amendment; leave None for a fresh
     /// witness capture.
     pub amends: Option<AmendsReference>,
+    /// SHA-256 of the audio bytes the inference pipeline read, hex-encoded.
+    /// At seal time `build_and_seal_bundle` recomputes the hash from the
+    /// on-disk bytes and aborts if it does not match. Closes the TOCTOU
+    /// between inference and seal where a same-user-account process could
+    /// swap the on-disk file after Gemma read it but before the user clicked
+    /// Seal. None disables the check (e.g., tests that do not run inference).
+    pub pinned_audio_sha256: Option<String>,
+    /// SHA-256 of each image the inference pipeline read, hex-encoded, in
+    /// the same order as [`image_paths`]. The seal step aborts on any
+    /// mismatch. See [`pinned_audio_sha256`] for the rationale.
+    pub pinned_image_sha256s: Option<Vec<String>>,
 }
 
 /// A signer is anything that can produce a 64-byte Ed25519 signature over a
@@ -86,6 +96,15 @@ pub fn build_and_seal_bundle<S: BundleSigner>(
             source,
         })?;
     let audio_hash = hash_bytes_hex(&audio_bytes);
+    if let Some(pinned) = inputs.pinned_audio_sha256.as_deref() {
+        if pinned != audio_hash {
+            return Err(WitnessCoreError::AssetTampered {
+                path: inputs.audio_path.clone(),
+                pinned_sha256: pinned.to_string(),
+                seal_sha256: audio_hash,
+            });
+        }
+    }
 
     // Advisory perceptual fingerprint. A decode failure surfaces as the
     // assertion being omitted, never as a sealing failure: the cryptographic
@@ -102,6 +121,14 @@ pub fn build_and_seal_bundle<S: BundleSigner>(
         }
     };
 
+    if let Some(pinned_list) = inputs.pinned_image_sha256s.as_ref() {
+        if pinned_list.len() != inputs.image_paths.len() {
+            return Err(WitnessCoreError::PinnedImageHashCountMismatch {
+                pinned_count: pinned_list.len(),
+                seal_count: inputs.image_paths.len(),
+            });
+        }
+    }
     let mut image_blobs: Vec<(String, Vec<u8>, String)> =
         Vec::with_capacity(inputs.image_paths.len());
     for (i, image_path) in inputs.image_paths.iter().enumerate() {
@@ -111,6 +138,16 @@ pub fn build_and_seal_bundle<S: BundleSigner>(
             source,
         })?;
         let hash = hash_bytes_hex(&bytes);
+        if let Some(pinned_list) = inputs.pinned_image_sha256s.as_ref() {
+            let pinned = &pinned_list[i];
+            if pinned != &hash {
+                return Err(WitnessCoreError::AssetTampered {
+                    path: image_path.clone(),
+                    pinned_sha256: pinned.clone(),
+                    seal_sha256: hash,
+                });
+            }
+        }
         image_blobs.push((paths::image(i, &extension), bytes, hash));
     }
 
@@ -177,7 +214,13 @@ pub fn build_and_seal_bundle<S: BundleSigner>(
     };
     let signature_bytes = canonicalize(&signature_doc)?;
 
-    let mut entries: Vec<ZipEntry> = Vec::with_capacity(4 + image_blobs.len());
+    // Public key is intentionally NOT shipped as a standalone bundle entry.
+    // The signed manifest's `signer.public_key_pem` is what verifiers consume,
+    // so a standalone `public_key.pem` would be a redundant unsigned file the
+    // signature does not cover. Shipping only the signed copy eliminates the
+    // class of attacks where a reviewer extracts the standalone file and
+    // mistakes a substituted key for "the signer's key."
+    let mut entries: Vec<ZipEntry> = Vec::with_capacity(3 + image_blobs.len());
     entries.push(ZipEntry {
         path: paths::MANIFEST.to_string(),
         data: manifest_bytes,
@@ -185,10 +228,6 @@ pub fn build_and_seal_bundle<S: BundleSigner>(
     entries.push(ZipEntry {
         path: paths::SIGNATURE.to_string(),
         data: signature_bytes,
-    });
-    entries.push(ZipEntry {
-        path: paths::PUBLIC_KEY_PEM.to_string(),
-        data: inputs.signer_public_key_pem.as_bytes().to_vec(),
     });
     entries.push(ZipEntry {
         path: paths::AUDIO.to_string(),

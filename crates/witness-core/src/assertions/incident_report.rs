@@ -43,6 +43,7 @@ pub enum EvidenceKind {
 /// The `sha256` is the hex-encoded SHA-256 of the raw bytes, computed by the
 /// capture pipeline at the moment the asset was written to disk.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct EvidenceReference {
     /// Type of asset (audio, image, etc.).
     pub kind: EvidenceKind,
@@ -55,6 +56,7 @@ pub struct EvidenceReference {
 /// `description` is required because it survives even when GPS is unavailable.
 /// Coordinates are optional and bounded by Earth's geographic ranges.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct Location {
     /// Latitude in decimal degrees, range `[-90, 90]`.
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -73,6 +75,7 @@ pub struct Location {
 ///
 /// All fields are optional: the witness may choose to remain anonymous.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, Default)]
+#[serde(deny_unknown_fields)]
 pub struct WitnessContact {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     #[schemars(length(min = 1))]
@@ -91,6 +94,7 @@ pub struct WitnessContact {
 /// transcript. The report is hashed and signed alongside the raw transcript
 /// when the bundle is finalized.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct IncidentReport {
     /// ISO 8601 timestamp of when the incident occurred (not when it was reported).
     pub timestamp: String,

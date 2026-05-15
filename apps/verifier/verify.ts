@@ -1,5 +1,5 @@
 import { verifyBundle as verifyBundleLogic } from "./src/verify-logic";
-import type { KnownFingerprints } from "./src/types";
+import type { KnownFingerprints, TrustedSigners } from "./src/types";
 import { renderResult } from "./src/render-result";
 
 // re-export for test harnesses and programmatic use
@@ -69,21 +69,33 @@ async function handleFile(file: File, results: HTMLElement): Promise<void> {
   }
 
   let known: KnownFingerprints;
+  let trusted: TrustedSigners;
   try {
     known = loadKnownFingerprints();
+    trusted = loadTrustedSigners();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     renderResult(results, {
       ok: false,
       checks: [],
       manifest: null,
-      error: `could not load known fingerprints: ${message}`,
+      error: `could not load verifier trust anchors: ${message}`,
     });
     return;
   }
 
-  const result = await verifyBundleLogic(buffer, known);
-  renderResult(results, result);
+  try {
+    const result = await verifyBundleLogic(buffer, known, trusted);
+    renderResult(results, result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    renderResult(results, {
+      ok: false,
+      checks: [],
+      manifest: null,
+      error: `verifier raised an unexpected error: ${message}. the bundle may be malformed in a way the verifier did not anticipate.`,
+    });
+  }
 }
 
 function loadKnownFingerprints(): KnownFingerprints {
@@ -99,6 +111,21 @@ function loadKnownFingerprints(): KnownFingerprints {
     );
   }
   return raw as KnownFingerprints;
+}
+
+function loadTrustedSigners(): TrustedSigners {
+  const raw: unknown = (window as unknown as Record<string, unknown>)
+    .__TRUSTED_SIGNERS__;
+  if (
+    typeof raw !== "object" ||
+    raw === null ||
+    !Array.isArray((raw as Record<string, unknown>).signers)
+  ) {
+    throw new Error(
+      "trusted-signers data is missing or malformed in the verifier bundle. rebuild the verifier or check apps/verifier/trusted-signers.json.",
+    );
+  }
+  return raw as TrustedSigners;
 }
 
 function escapeHtml(text: string): string {

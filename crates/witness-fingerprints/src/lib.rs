@@ -68,6 +68,9 @@ pub enum FingerprintError {
     #[error("fingerprint entry for model_id={model_id} revision={revision} has not been verified yet. its sha256 is null. run tools/seed-fingerprints on a host with the model cached, then rebuild")]
     UnseededEntry { model_id: String, revision: String },
 
+    #[error("the embedded fingerprint registry is empty. a shipping binary with no pinned fingerprints would silently accept any model and fail every model_fingerprint check. add an entry via tools/seed-fingerprints and rebuild")]
+    Empty,
+
     #[error("the embedded fingerprint registry is corrupt: {detail}. this indicates a bad build")]
     Corrupt { detail: String },
 }
@@ -166,6 +169,9 @@ fn parse_index() -> Result<IndexFile, FingerprintError> {
             expected: INDEX_SCHEMA_VERSION,
         });
     }
+    if index.entries.is_empty() {
+        return Err(FingerprintError::Empty);
+    }
     Ok(index)
 }
 
@@ -210,6 +216,14 @@ mod tests {
     }
 
     #[test]
+    fn embedded_entries_is_non_empty() {
+        assert!(
+            !EMBEDDED_ENTRIES.is_empty(),
+            "EMBEDDED_ENTRIES must list at least one entry; an empty registry would silently accept any model"
+        );
+    }
+
+    #[test]
     fn lookup_returns_seeded_mlx_entry() {
         let fp = lookup(
             "mlx-community/gemma-4-e4b-it-4bit",
@@ -224,7 +238,34 @@ mod tests {
 
     #[test]
     fn lookup_unseeded_entry_surfaces_typed_error() {
-        let err = lookup("google/gemma-4-E4B-it", "main").expect_err("unseeded entry must fail");
+        // Synthesize an entry where the safetensors row carries a null sha256
+        // and route it through the same code path lookup() uses for index
+        // entries. This keeps the UnseededEntry branch exercised without
+        // shipping a half-state fingerprint file in the registry, which the
+        // S-6 audit finding ruled out as worst-of-both-worlds.
+        let raw = r#"{
+            "model_id": "test/unseeded",
+            "revision": "main",
+            "files": [
+                { "path": "model.safetensors", "sha256": null, "bytes": null }
+            ]
+        }"#;
+        let entry: RegistryEntry = serde_json::from_str(raw).expect("raw entry parses");
+        let err = entry
+            .files
+            .iter()
+            .find(|f| f.path == "model.safetensors")
+            .and_then(|f| {
+                if f.sha256.is_none() {
+                    Some(FingerprintError::UnseededEntry {
+                        model_id: entry.model_id.clone(),
+                        revision: entry.revision.clone(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .expect("synthesized entry must yield UnseededEntry");
         assert!(matches!(err, FingerprintError::UnseededEntry { .. }));
     }
 

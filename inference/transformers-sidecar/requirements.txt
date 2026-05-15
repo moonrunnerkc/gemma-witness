@@ -1,8 +1,0 @@
-transformers
-torch
-torchvision
-torchaudio
-fastapi
-uvicorn
-pillow
-numpy

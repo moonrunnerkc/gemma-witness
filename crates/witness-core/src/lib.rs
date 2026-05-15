@@ -32,4 +32,4 @@ pub use manifest::{
     ConsistencyVerdict, Manifest, ModelFingerprint, ReasoningTrace, SignatureDocument, SignerInfo,
     MANIFEST_VERSION,
 };
-pub use verifier::{verify_bundle, VerificationReport};
+pub use verifier::{verify_amendment_chain, verify_bundle, KnownFingerprint, VerificationReport};

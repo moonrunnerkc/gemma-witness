@@ -52,7 +52,7 @@ fn fixture_image() -> PathBuf {
     p
 }
 
-fn seal_clean_bundle(out: &std::path::Path) -> Vec<String> {
+fn seal_clean_bundle(out: &std::path::Path) -> Vec<witness_core::KnownFingerprint> {
     let signing_key = generate_signing_key();
     let verifying = signing_key.verifying_key();
     let pem = encode_public_key_pem(&verifying).expect("pem");
@@ -99,9 +99,11 @@ fn seal_clean_bundle(out: &std::path::Path) -> Vec<String> {
         signer_key_id: kid,
         inference_parameters: None,
         amends: None,
+        pinned_audio_sha256: None,
+        pinned_image_sha256s: None,
     };
     build_and_seal_bundle(&inputs, &signer, out).expect("seal");
-    vec![inputs.model_fingerprint.sha256]
+    vec![inputs.model_fingerprint.into()]
 }
 
 /// Rewrite `src` to `dst` using the supplied compression method. The entry

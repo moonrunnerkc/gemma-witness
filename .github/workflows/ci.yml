@@ -13,26 +13,26 @@ jobs:
   rust-checks:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable as of 2025-04-09
         with:
           toolchain: stable
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.7.3
         with:
           prefix-key: "v2-2026-05-15"
           cache-bin: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3.0.0
         with:
           version: 9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # v4.0.2
         with:
           node-version: 22
           cache: pnpm
@@ -45,42 +45,42 @@ jobs:
           pnpm build
 
       - name: fmt
-        run: cargo fmt -- --check
+        run: cargo fmt --all -- --check
 
       - name: clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
       - name: build
-        run: cargo build --workspace
+        run: cargo build --locked --workspace
 
       - name: unit and integration tests
-        run: cargo test --workspace -- --test-threads=1
+        run: cargo test --locked --workspace -- --test-threads=1
         env:
           RUST_BACKTRACE: 1
 
   rust-coverage:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable as of 2025-04-09
         with:
           toolchain: stable
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.7.3
         with:
           prefix-key: "v2-2026-05-15"
           cache-bin: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3.0.0
         with:
           version: 9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # v4.0.2
         with:
           node-version: 22
           cache: pnpm
@@ -93,35 +93,62 @@ jobs:
           pnpm build
 
       - name: Install cargo-tarpaulin
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@1b40b317f49a4a91ff7e2f3a0fe0f44f988fdc16 # v2.32.18
         with:
           tool: cargo-tarpaulin
 
       - name: Generate coverage report
-        run: cargo tarpaulin --workspace --out Html --out Xml -- --test-threads=1
+        run: cargo tarpaulin --locked --workspace --out Html --out Xml -- --test-threads=1
         env:
           RUST_BACKTRACE: 1
 
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: rust-coverage
           path: |
             tarpaulin-report.html
             cobertura.xml
 
+  rust-supply-chain-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable as of 2025-04-09
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.7.3
+        with:
+          prefix-key: "v2-2026-05-15-supply"
+          cache-bin: false
+
+      - name: Install cargo-audit and cargo-deny
+        uses: taiki-e/install-action@1b40b317f49a4a91ff7e2f3a0fe0f44f988fdc16 # v2.32.18
+        with:
+          tool: cargo-audit,cargo-deny
+
+      - name: cargo audit
+        run: cargo audit --locked
+
+      - name: cargo deny
+        run: cargo deny --locked check advisories bans sources
+
   verifier-js:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3.0.0
         with:
           version: 9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # v4.0.2
         with:
           node-version: 22
           cache: pnpm
@@ -131,6 +158,10 @@ jobs:
         working-directory: apps/verifier
         run: pnpm install --frozen-lockfile
 
+      - name: audit
+        working-directory: apps/verifier
+        run: pnpm audit --audit-level moderate
+
       - name: lint
         working-directory: apps/verifier
         run: pnpm lint
@@ -139,33 +170,66 @@ jobs:
         working-directory: apps/verifier
         run: pnpm build
 
-      - name: test
+      - name: parse-public-key tests
+        working-directory: apps/verifier
+        run: npx tsx tests/parse-public-key.test.ts
+
+      - name: e2e tests
         working-directory: apps/verifier
         run: npx tsx tests/e2e.test.ts
+
+      - name: canonicalization conformance
+        working-directory: apps/verifier
+        run: npx tsx tests/canonicalization-conformance.test.ts
+
+  capture-js-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3.0.0
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # v4.0.2
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/capture/pnpm-lock.yaml
+
+      - name: install
+        working-directory: apps/capture
+        run: pnpm install --frozen-lockfile
+
+      - name: audit
+        working-directory: apps/capture
+        run: pnpm audit --audit-level moderate
 
   rust-e2e-degraded:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable as of 2025-04-09
         with:
           toolchain: stable
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.7.3
         with:
           prefix-key: "v2-2026-05-15"
           cache-bin: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3.0.0
         with:
           version: 9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # v4.0.2
         with:
           node-version: 22
           cache: pnpm
@@ -178,7 +242,7 @@ jobs:
           pnpm build
 
       - name: build
-        run: cargo build --workspace
+        run: cargo build --locked --workspace
 
       # The mlx-vlm sidecar requires Apple Silicon with mlx-vlm installed.
       # GitHub Actions macos-latest runners do not host the model or the Python
@@ -186,22 +250,25 @@ jobs:
       # skips when the sidecar is unreachable, so we run it to confirm the skip
       # path works and the build compiles the test target.
       - name: degraded e2e (skip path)
-        run: cargo test -p witness-core --test day-4-e2e -- --nocapture
+        run: cargo test --locked -p witness-core --test day-4-e2e -- --nocapture
         env:
           RUST_BACKTRACE: 1
 
       # Run the Rust verifier round-trip tests that do not need the sidecar.
       - name: bundle round-trip tests
-        run: cargo test -p witness-core --test bundle_roundtrip -- --nocapture
+        run: cargo test --locked -p witness-core --test bundle_roundtrip -- --nocapture
 
       - name: canonicalization tests
-        run: cargo test -p witness-core --test canonicalization -- --nocapture
+        run: cargo test --locked -p witness-core --test canonicalization -- --nocapture
+
+      - name: canonicalization conformance tests
+        run: cargo test --locked -p witness-core --test canonicalization_conformance -- --nocapture
 
       - name: keystore tests
-        run: cargo test -p witness-core --test keystore -- --nocapture
+        run: cargo test --locked -p witness-core --test keystore -- --nocapture
 
       - name: incident schema tests
-        run: cargo test -p witness-core --test incident_schema -- --nocapture
+        run: cargo test --locked -p witness-core --test incident_schema -- --nocapture
 
   cross-platform-e2e:
     name: cross-platform-e2e (${{ matrix.os }})
@@ -211,15 +278,15 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable as of 2025-04-09
         with:
           toolchain: stable
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.7.3
         with:
           prefix-key: "v2-2026-05-15"
           cache-bin: false
@@ -231,12 +298,12 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3.0.0
         with:
           version: 9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # v4.0.2
         with:
           node-version: 22
           cache: pnpm
@@ -254,20 +321,20 @@ jobs:
       # on Apple Silicon or large GPUs. Closes the README's "CI limitations"
       # and "Cross-platform gaps" bullets.
       - name: hermetic capture-to-verify e2e
-        run: cargo test -p witness-core --test fake-sidecar-e2e -- --nocapture
+        run: cargo test --locked -p witness-core --test fake-sidecar-e2e -- --nocapture
         env:
           RUST_BACKTRACE: 1
 
       - name: fingerprint registry tests
-        run: cargo test -p witness-fingerprints -- --nocapture
+        run: cargo test --locked -p witness-fingerprints -- --nocapture
 
       - name: fake sidecar unit tests
-        run: cargo test -p witness-test-sidecar -- --nocapture
+        run: cargo test --locked -p witness-test-sidecar -- --nocapture
 
   em-dash-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
       - name: scan for em dashes
         run: |

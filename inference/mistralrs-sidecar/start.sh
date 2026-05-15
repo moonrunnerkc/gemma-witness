@@ -15,6 +15,28 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MODEL="${GW_SIDECAR_MODEL:-google/gemma-4-E4B-it}"
 PORT="${GW_SIDECAR_PORT:-8080}"
 HOST="${GW_SIDECAR_HOST:-127.0.0.1}"
+# Pinned mistralrs version. Update this in lockstep with the --rev pin in
+# inference/mistralrs-sidecar/README.md when bumping the audited release.
+MISTRALRS_PINNED_VERSION="${MISTRALRS_PINNED_VERSION:-mistralrs 0.7.0}"
+
+case "$HOST" in
+  127.0.0.1|::1|localhost) ;;
+  *)
+    echo "refusing to bind mistralrs sidecar to non-loopback host \"$HOST\". the capture app trusts whatever returns on /v1/chat/completions as the model output, so a sidecar reachable from the network is a forgery vector. set GW_SIDECAR_HOST to 127.0.0.1, ::1, or localhost." >&2
+    exit 64
+    ;;
+esac
+
+if ! command -v mistralrs >/dev/null 2>&1; then
+  echo "mistralrs not found on PATH. install via the pinned cargo install command in inference/mistralrs-sidecar/README.md." >&2
+  exit 65
+fi
+
+INSTALLED_VERSION="$(mistralrs --version 2>/dev/null | head -n1 || true)"
+if [ "$INSTALLED_VERSION" != "$MISTRALRS_PINNED_VERSION" ]; then
+  echo "installed mistralrs version \"$INSTALLED_VERSION\" does not match the pinned value \"$MISTRALRS_PINNED_VERSION\". sealing a bundle against an unpinned binary lets a malicious mistralrs release ship attacker-controlled transcripts to your signed manifest. reinstall via the cargo install --rev command in inference/mistralrs-sidecar/README.md, or set MISTRALRS_PINNED_VERSION explicitly after auditing the new release." >&2
+  exit 66
+fi
 
 STATE_DIR="$REPO_ROOT/target/sidecar-state"
 mkdir -p "$STATE_DIR"

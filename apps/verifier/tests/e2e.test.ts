@@ -11,7 +11,8 @@ import * as url from "node:url";
 import { unzipSync, zipSync, strFromU8 } from "fflate";
 
 import { verifyBundle } from "../src/verify-logic";
-import type { KnownFingerprints } from "../src/types";
+import type { KnownFingerprints, TrustedSigners } from "../src/types";
+import { sha256 } from "@noble/hashes/sha2";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -32,6 +33,46 @@ const KNOWN_EMPTY: KnownFingerprints = {
   schema_version: 1,
   fingerprints: [],
 };
+
+const TRUSTED_EMPTY: TrustedSigners = {
+  schema_version: 1,
+  signers: [],
+};
+
+/**
+ * Derive a trusted-signers registry that lists the day-4 fixture's signer as
+ * trusted. The fixture's key_id and PEM-bytes hash are read out of its
+ * manifest at test runtime so the registry stays in sync with whatever
+ * fixture currently lives on disk.
+ */
+function trustedSignersFromFixture(): TrustedSigners {
+  const buf = fs.readFileSync(FIXTURE);
+  const entries = unzipSync(new Uint8Array(buf));
+  const manifest = JSON.parse(strFromU8(entries["manifest.json"]));
+  const keyId: string = manifest.signer.key_id;
+  const pem: string = manifest.signer.public_key_pem;
+  const pemSha256 = bytesToHex(sha256(new TextEncoder().encode(pem)));
+  return {
+    schema_version: 1,
+    signers: [
+      {
+        key_id: keyId,
+        public_key_pem_sha256: pemSha256,
+        label: "day-4 fixture (test)",
+        added_at: "2026-05-15T00:00:00Z",
+        note: "synthesized at test time from tests/fixtures/day-4-fixture.witness",
+      },
+    ],
+  };
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  let out = "";
+  for (let i = 0; i < bytes.length; i++) {
+    out += bytes[i].toString(16).padStart(2, "0");
+  }
+  return out;
+}
 
 function toArrayBuffer(buf: Buffer): ArrayBuffer {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
@@ -70,7 +111,7 @@ async function runTests(): Promise<void> {
   // T1: Positive.
   console.log("--- T1 (positive): valid fixture bundle");
   {
-    const outcome = await verifyBundle(readFixture(), KNOWN_WITH_FINGERPRINT);
+    const outcome = await verifyBundle(readFixture(), KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture());
     assert(outcome.ok, "T1: overall should be OK");
     assert(outcome.checks.length >= 3, "T1: should have at least 3 checks");
     assert(outcome.checks[0].passed, "T1: signature row should pass");
@@ -86,7 +127,7 @@ async function runTests(): Promise<void> {
       const audio = entries.get("assets/audio.wav")!;
       audio[100] ^= 0x42;
     });
-    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT);
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture());
     assert(!outcome.ok, "T2: overall should fail");
     assert(outcome.checks[0].passed, "T2: signature row should still pass");
     assert(!outcome.checks[1].passed, "T2: asset row should fail");
@@ -114,7 +155,7 @@ async function runTests(): Promise<void> {
         new TextEncoder().encode(JSON.stringify(sigDoc)),
       );
     });
-    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT);
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture());
     assert(!outcome.ok, "T3: overall should fail");
     assert(!outcome.checks[0].passed, "T3: signature row should fail");
     assert(outcome.checks[1].passed, "T3: asset row should still pass");
@@ -125,7 +166,7 @@ async function runTests(): Promise<void> {
   // T4: Unknown model fingerprint using an empty known list.
   console.log("--- T4 (negative): unknown model fingerprint (empty registry)");
   {
-    const outcome = await verifyBundle(readFixture(), KNOWN_EMPTY);
+    const outcome = await verifyBundle(readFixture(), KNOWN_EMPTY, trustedSignersFromFixture());
     assert(!outcome.ok, "T4: overall should fail");
     assert(outcome.checks[0].passed, "T4: signature row should still pass");
     assert(outcome.checks[1].passed, "T4: asset row should still pass");
@@ -154,7 +195,7 @@ async function runTests(): Promise<void> {
         new TextEncoder().encode(JSON.stringify(manifest)),
       );
     });
-    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT);
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture());
     assert(!outcome.ok, "T4b: overall should fail");
     // Signature fails because manifest bytes changed without re-signing.
     assert(!outcome.checks[0].passed, "T4b: signature row should fail (manifest mutated)");
@@ -205,7 +246,7 @@ async function runTests(): Promise<void> {
       "T5: mutated manifest bytes must differ from original; otherwise key reorder did not change the on-disk representation",
     );
 
-    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT);
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture());
     assert(outcome.ok, "T5: overall should still be OK after key reorder");
     assert(
       outcome.checks[0].passed,
@@ -214,6 +255,78 @@ async function runTests(): Promise<void> {
     assert(outcome.checks[1].passed, "T5: asset row should still pass");
     assert(outcome.checks[2].passed, "T5: fingerprint row should still pass");
     console.log("PASS T5");
+  }
+
+  // T7 (V-1): Signer not in the trusted-signers registry.
+  console.log("--- T7 (negative): unknown signer fails the signer-identity row");
+  {
+    const outcome = await verifyBundle(
+      readFixture(),
+      KNOWN_WITH_FINGERPRINT,
+      TRUSTED_EMPTY,
+    );
+    assert(!outcome.ok, "T7: overall should fail when signer is unknown");
+    const signerRow = outcome.checks.find((c) =>
+      c.name.includes("known witness"),
+    );
+    assert(!!signerRow, "T7: a signer-identity row must exist");
+    assert(!signerRow!.passed, "T7: signer row should fail");
+    assert(
+      signerRow!.details.some((d) => d.includes("NOT in the verifier's trusted-signers registry")),
+      "T7: detail should explain the gap",
+    );
+    assert(
+      signerRow!.details.some((d) => d.includes("fingerprint")),
+      "T7: detail should print a public-key fingerprint for out-of-band pinning",
+    );
+    console.log("PASS T7");
+  }
+
+  // T8 (V-1): Signer present in the registry passes.
+  console.log("--- T8 (positive): known signer passes the signer-identity row");
+  {
+    const outcome = await verifyBundle(
+      readFixture(),
+      KNOWN_WITH_FINGERPRINT,
+      trustedSignersFromFixture(),
+    );
+    const signerRow = outcome.checks.find((c) =>
+      c.name.includes("known witness"),
+    );
+    assert(!!signerRow, "T8: a signer-identity row must exist");
+    assert(signerRow!.passed, "T8: signer row should pass for a registered signer");
+    console.log("PASS T8");
+  }
+
+  // T9 (V-4): manifest claims a model_id the registry does not own.
+  console.log("--- T9 (negative): fingerprint triple mismatch");
+  {
+    const mutated = mutateBundle((entries) => {
+      const raw = entries.get("manifest.json")!;
+      const manifest = JSON.parse(strFromU8(raw));
+      // Keep the SHA-256 (so byHash succeeds) but change the model_id so
+      // the registry's (model_id, revision, sha256) tuple no longer matches.
+      manifest.assertions["gemma.witness.model_fingerprint"].model_id =
+        "evil/model";
+      entries.set(
+        "manifest.json",
+        new TextEncoder().encode(JSON.stringify(manifest)),
+      );
+    });
+    const outcome = await verifyBundle(
+      mutated,
+      KNOWN_WITH_FINGERPRINT,
+      trustedSignersFromFixture(),
+    );
+    assert(!outcome.ok, "T9: overall should fail");
+    const fpRow = outcome.checks.find((c) => c.name === "Model fingerprint known");
+    assert(!!fpRow, "T9: a fingerprint row must exist");
+    assert(!fpRow!.passed, "T9: fingerprint row should fail on triple mismatch");
+    assert(
+      fpRow!.details.some((d) => d.includes("evil/model")),
+      "T9: detail should mention the bogus claimed model_id",
+    );
+    console.log("PASS T9");
   }
 
   // T6: Unknown manifest version.
@@ -228,7 +341,7 @@ async function runTests(): Promise<void> {
         new TextEncoder().encode(JSON.stringify(manifest)),
       );
     });
-    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT);
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture());
     assert(!outcome.ok, "T6: overall should fail");
     assert(
       outcome.checks.some(

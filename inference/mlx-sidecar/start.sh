@@ -16,6 +16,14 @@ MODEL="${GW_SIDECAR_MODEL:-mlx-community/gemma-4-e4b-it-4bit}"
 PORT="${GW_SIDECAR_PORT:-8080}"
 HOST="${GW_SIDECAR_HOST:-127.0.0.1}"
 
+case "$HOST" in
+  127.0.0.1|::1|localhost) ;;
+  *)
+    echo "refusing to bind sidecar to non-loopback host \"$HOST\". the capture app trusts whatever returns on /v1/chat/completions as the model output, so a sidecar reachable from the network is a forgery vector. set GW_SIDECAR_HOST to 127.0.0.1, ::1, or localhost." >&2
+    exit 64
+    ;;
+esac
+
 STATE_DIR="$REPO_ROOT/target/sidecar-state"
 mkdir -p "$STATE_DIR"
 PID_FILE="$STATE_DIR/mlx-sidecar.pid"

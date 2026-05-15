@@ -5,6 +5,17 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Hermetic OpenAI-compatible fake sidecar used in tests and CI to exercise the full capture pipeline without booting a real model."
+publish = false
+
+[features]
+# Default-on for in-workspace tests and dev tooling; the crate is `publish = false`
+# so this feature surface is internal-only.
+default = ["test-fixtures"]
+test-fixtures = []
+# Tripwire: depending on this crate from production code with `release`
+# enabled triggers a compile-time error. The capture binary never enables
+# this feature, so reaching this path means a wiring mistake.
+release = []
 
 [dependencies]
 serde.workspace = true

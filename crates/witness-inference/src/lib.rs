@@ -15,7 +15,8 @@ pub use client::{
 };
 pub use error::InferenceError;
 pub use http::{
-    fetch_active_model_id, fetch_active_model_id_default, DEFAULT_ENDPOINT, DEFAULT_MODEL,
+    assert_endpoint_is_loopback, fetch_active_model_id, fetch_active_model_id_default, handshake,
+    DEFAULT_ENDPOINT, DEFAULT_MODEL, MAX_RESPONSE_BYTES, SIDECAR_TOKEN_ENV, SIDECAR_TOKEN_HEADER,
 };
 pub use inference_parameters::snapshot as inference_parameters_snapshot;
 pub use passes::analyze_image::{

@@ -66,6 +66,7 @@ export interface AudioFingerprint {
 export interface AmendsReference {
   original_bundle_id: string;
   original_manifest_sha256: string;
+  original_signer_key_id: string;
   reason: string;
 }
 
@@ -120,6 +121,21 @@ export interface KnownFingerprint {
 export interface KnownFingerprints {
   schema_version: number;
   fingerprints: KnownFingerprint[];
+}
+
+/** A trusted-signers.json entry. */
+export interface TrustedSigner {
+  key_id: string;
+  public_key_pem_sha256: string;
+  label: string;
+  added_at: string;
+  note: string;
+}
+
+/** The parsed trusted-signers.json envelope. */
+export interface TrustedSigners {
+  schema_version: number;
+  signers: TrustedSigner[];
 }
 
 /** Outcome of a single verification check. */

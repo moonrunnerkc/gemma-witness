@@ -62,6 +62,7 @@ const POWER_FLOOR: f32 = 1e-12;
 /// The serialized assertion. Lives at `gemma.witness.audio_fingerprint` in
 /// the manifest when present.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AudioFingerprint {
     /// Identifier for the algorithm that produced [`Self::value`].
     pub algorithm: String,

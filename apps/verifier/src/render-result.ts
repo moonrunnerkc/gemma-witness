@@ -88,6 +88,7 @@ function renderAmendsRow(amends: AmendsReference): HTMLElement {
   drill.textContent =
     `original_bundle_id:        ${amends.original_bundle_id}\n` +
     `original_manifest_sha256:  ${amends.original_manifest_sha256}\n` +
+    `original_signer_key_id:    ${amends.original_signer_key_id}\n` +
     `reason:                    ${amends.reason}`;
   row.appendChild(drill);
   return row;
