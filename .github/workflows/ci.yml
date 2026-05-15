@@ -86,24 +86,21 @@ jobs:
           cache: pnpm
           cache-dependency-path: apps/capture/pnpm-lock.yaml
 
-      - name: Build capture frontend (required by tauri::generate_context!)
-        working-directory: apps/capture
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm build
-
       - name: Install cargo-tarpaulin
+        # Pinned to current. The taiki-e @latest resolver returns 0.28.0,
+        # which fails coverage merge on aarch64-apple-darwin with
+        # "Parsing failed" after instrumented runs.
         uses: taiki-e/install-action@5c256d5a578917d032b8adcd9802cfa432265631 # v2.32.18
         with:
-          tool: cargo-tarpaulin
+          tool: cargo-tarpaulin@0.35.4
 
       - name: Generate coverage report
-        # gemma-witness-capture pulls swift_rs via Tauri on macOS; tarpaulin's
-        # build path trips its Swift link step on the runner image. The
-        # capture crate is a Tauri shell whose useful coverage is integration-
-        # tested elsewhere (cross-platform-e2e + bundle-roundtrip). Coverage
-        # gates the cryptographic and serialization paths in witness-core.
-        run: cargo tarpaulin --locked --workspace --exclude gemma-witness-capture --out Html --out Xml -- --test-threads=1
+        # Scope: witness-core (crypto + serialization), witness-inference
+        # (sidecar HTTP boundary), witness-fingerprints (embedded registry).
+        # Excludes gemma-witness-capture (Tauri shell; swift_rs link trips on
+        # macOS runners and tests need a webview) and the CLI tools (no logic
+        # to cover beyond what witness-core already exercises).
+        run: cargo tarpaulin --locked --packages witness-core --packages witness-inference --packages witness-fingerprints --out Html --out Xml -- --test-threads=1
         env:
           RUST_BACKTRACE: 1
 
