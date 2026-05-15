@@ -163,10 +163,8 @@ Install capture app dependencies:
 
 ```bash
 cd apps/capture
-pnpm install
+pnpm install --frozen-lockfile
 ```
-
-> Note: `apps/capture` currently does not include a committed lockfile.
 
 ### Inference sidecars
 
@@ -182,7 +180,8 @@ mistralrs:
 
 ```bash
 ./inference/mistralrs-sidecar/start.sh
-./inference/mistralrs-sidecar/compute-fingerprint.sh
+# After the model is first downloaded, seed its fingerprint in the unified registry:
+cargo run -p seed-fingerprints -- --model-id google/gemma-4-E4B-it --revision main
 ```
 
 Transformers fallback:
@@ -318,72 +317,33 @@ These are real limitations in the current implementation.
 
 ### Trust model limitations
 
-- Keys are software-held in the OS keychain only.
-- No TPM, Secure Enclave, or hardware attestation.
+- Keys are software-held in the OS keychain.
+- No TPM, Secure Enclave, or hardware attestation backend is wired up today. Signing flows through the [`KeyProvider`](crates/witness-core/src/key_provider.rs) trait, so a Secure-Enclave or TPM provider can be added without rewriting the seal path. The `hardware-keys` Cargo feature is reserved for that work and fails the build until a real backend lands, to prevent a binary from claiming hardware backing it does not deliver.
 - No external certificate authority or transparency log.
 - Verification currently operates as a TOFU-style trust model.
 
 A compromised user account can sign arbitrary bundles.
 
-### Fingerprint limitations
+### Fingerprint provenance
 
-The current verifier fingerprint seed is self-derived from fixture output and should not yet be treated as an authoritative trust anchor.
+Fingerprints live in a single registry at `inference/fingerprints/`, embedded into the capture binary at compile time via the `witness-fingerprints` crate. The seal command queries the live sidecar's `/v1/models` and looks up the matching entry, so the bundle records whichever model the running sidecar is actually serving.
 
-The mistralrs sidecar also ships with a placeholder fingerprint until:
+`tools/seed-fingerprints` is the only supported way to add or update an entry. It fetches the Hugging Face LFS oid for a pinned `(model_id, revision)`, recomputes the SHA-256 of the locally cached `model.safetensors`, and refuses to write on mismatch. The MLX entry seeded prior to that tool's introduction is marked `verified_by: "local-roundtrip"` and will be re-stamped as `huggingface-lfs+local-recompute` the next time a maintainer with the model cached runs the seeder.
 
-```bash
-./compute-fingerprint.sh
-```
+### Cross-platform coverage
 
-is executed.
+CI now exercises the full capture-to-seal-to-verify pipeline on Linux and Windows via `witness-test-sidecar`, a hermetic OpenAI-compatible fake that returns precomputed fixture responses. No real model is required, so this runs on every push. The mlx-vlm and mistralrs paths still require Apple Silicon or a CUDA-equipped machine respectively for actual inference; that constraint is intrinsic to those backends, not to Gemma.Witness.
 
-### Cross-platform gaps
+### CI scope
 
-The Apple Silicon path is the primary tested implementation.
+- Hermetic e2e (Linux, Windows, macOS): capture pipeline + seal + verify + tamper detection against the fake sidecar.
+- Live e2e (macOS, real mlx-vlm sidecar): runs locally; the GitHub macOS runner cannot host the model, so the same test compiles and exits via its skip path in CI.
 
-Linux and Windows inference paths exist, but currently lack:
+### Audio model behavior
 
-- full fixture coverage
-- CI validation
-- verified end-to-end capture evidence
-
-### Capture correctness issue
-
-`seal_bundle_cmd` currently hardcodes the MLX fingerprint path during sealing.
-
-On Linux or Windows paths, bundles may incorrectly record the Apple Silicon fingerprint.
-
-### CI limitations
-
-The live sidecar pipeline is not exercised in CI.
-
-Current CI validates:
-
-- offline verifier behavior
-- fixture integrity
-- Rust verification logic
-
-but not a full live capture-to-seal pipeline.
-
-### Reproducibility gaps
-
-`apps/capture` does not currently include a committed `pnpm-lock.yaml`.
-
-Frontend dependency resolution for the capture app is therefore not fully reproducible.
-
-### Audio model limitations
-
-The transformers fallback path does not stream raw audio directly into the model.
-
-Audio is first transcribed, then referenced as text during later passes.
-
-The repository's "multimodal" behavior currently means:
-
-- transcript-derived text
-- images
-- structured reasoning
-
-not direct raw-audio attention.
+- `inference/mlx-sidecar` (mlx-vlm): the audio bytes flow into the model via the `input_audio` content part natively.
+- `inference/transformers-sidecar`: now reads audio with torchaudio, resamples to 16 kHz mono in memory, and hands the waveform to the processor under the `audio=` kwarg. The on-disk bytes the manifest hashes are not modified.
+- `inference/mistralrs-sidecar`: audio support depends on the mistral.rs build; treat as text-conditioned until verified for your version.
 
 ## What you can verify yourself
 

@@ -70,17 +70,26 @@ gemma-witness/
 │   └── verifier/                 Single-file static HTML verifier
 │       ├── index.html
 │       ├── verify.ts             (bundled to a single file via esbuild)
-│       └── known-fingerprints.json
+│       └── known-fingerprints.json   (generated from inference/fingerprints/)
 ├── crates/
 │   ├── witness-core/             Manifest schema, hashing, signing, bundle I/O
 │   ├── witness-cli/              CLI for testing without UI
-│   └── witness-inference/        HTTP client for the inference sidecar (OpenAI-compatible)
+│   ├── witness-inference/        HTTP client for the inference sidecar (OpenAI-compatible)
+│   ├── witness-fingerprints/     Embedded registry baked from inference/fingerprints/
+│   ├── witness-eval/             Evaluation harness
+│   └── witness-test-sidecar/     Hermetic OpenAI-compatible fake (CI uses it for cross-platform e2e)
 ├── inference/
+│   ├── fingerprints/             Unified (model_id, revision) -> safetensors sha256 registry
+│   │   ├── index.json
+│   │   └── <model>__<rev>.json   (one per pinned model revision)
 │   ├── mlx-sidecar/              Apple Silicon dev/demo path (mlx-vlm)
 │   │   └── start.sh              Wraps `mlx_vlm.server --model ... --port 8080`
+│   ├── mistralrs-sidecar/        Cross-platform Rust inference path
 │   └── transformers-sidecar/     Cross-platform fallback (transformers + Python)
-│       ├── sidecar.py
+│       ├── start.py
 │       └── requirements.txt
+├── tools/
+│   └── seed-fingerprints/        Fetches HF LFS oid, cross-checks local cache, writes registry
 ├── spec/
 │   ├── manifest-schema.json      JSON Schema for the manifest
 │   ├── incident-schema.json      JSON Schema for the structured incident report
@@ -105,7 +114,9 @@ These are bugs if violated, not stylistic preferences.
 
 **Inference is non-deterministic**. Tests for the inference pipeline verify schema validity and field presence, not exact string output. Pin sampling parameters (temperature, top-k, top-p) so behavior is bounded, but don't assert on transcript wording.
 
-**Model fingerprint pinning**. The verifier ships a list of known good Gemma 4 model fingerprints (SHA-256 of the `.safetensors` files). The capture app computes the fingerprint of the loaded model and includes it in the manifest. Mismatch is a hard failure in the verifier.
+**Model fingerprint pinning**. Fingerprints live in `inference/fingerprints/` and are embedded into the capture binary at compile time via the `witness-fingerprints` crate. At seal time the capture app queries the live sidecar's `/v1/models` and looks the active model up in that registry; if no entry exists, sealing fails with a clear error rather than recording an unverified hash. Updating an entry goes through `tools/seed-fingerprints`, which fetches the Hugging Face LFS oid for the pinned revision and refuses to write on mismatch. The verifier's `known-fingerprints.json` is generated from the same registry. Mismatch at verification time is a hard failure.
+
+**Key provider abstraction**. All signing flows through the `KeyProvider` trait in `crates/witness-core/src/key_provider.rs`. Today only `SoftwareEd25519Provider` is wired up; future Secure-Enclave / TPM backends will plug in here without rewriting the seal path. The `hardware-keys` Cargo feature is reserved and fails the build until a real backend lands.
 
 ## Build, test, run
 
@@ -126,15 +137,21 @@ cd apps/capture && pnpm tauri dev
 # Build the verifier (single HTML file output)
 cd apps/verifier && pnpm build
 
-# Run all Rust tests
-cargo test --workspace
+# Run all Rust tests (run with --test-threads=1; keyring tests are not parallel-safe)
+cargo test --workspace -- --test-threads=1
 
-# Run the end-to-end test (captures a fixture, signs, verifies)
-cargo test --test e2e -- --nocapture
+# Hermetic e2e against the in-process fake sidecar (cross-platform, no real model)
+cargo test -p witness-core --test fake-sidecar-e2e -- --nocapture
+
+# Live e2e against a running mlx-vlm sidecar on Apple Silicon
+cargo test -p witness-core --test day-4-e2e -- --nocapture
 
 # Lint
-cargo clippy --workspace -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 pnpm lint
+
+# Seed or refresh a model fingerprint from Hugging Face (run with the model cached locally)
+cargo run -p seed-fingerprints -- --model-id mlx-community/gemma-4-e4b-it-4bit --revision cc3b666c01c20395e0dcebd53854504c7d9821f9
 
 # CLI for testing without UI (requires sidecar running)
 cargo run -p witness-cli -- capture --audio tests/fixtures/test.wav --image tests/fixtures/test.jpg
@@ -164,13 +181,15 @@ If a design decision affects the bundle format, the signing flow, or the verifie
 
 ## Test strategy
 
-Three layers:
+Four layers:
 
-**Unit (Rust)**: pure functions in `witness-core` get unit tests. Canonicalization, hashing, manifest serialization, signature verification. Fast, deterministic, run on every save.
+**Unit (Rust)**: pure functions in `witness-core` and `witness-fingerprints` get unit tests. Canonicalization, hashing, manifest serialization, signature verification, registry lookup. Fast, deterministic, run on every save.
 
-**Integration (Rust + Python)**: spawn the inference sidecar, feed a fixture audio file, assert the output matches the incident schema. Slower, run on push to a feature branch.
+**Integration (Rust)**: spawn the inference sidecar (real or fake), feed fixture inputs, assert the output matches the incident schema. Slower, run on push to a feature branch.
 
-**End-to-end**: full pipeline from audio capture (or pre-recorded fixture) through to a verified bundle. The same test creates the bundle and runs the verifier logic on it. Catches schema drift between capture and verify. Runs on every PR.
+**Hermetic end-to-end**: `crates/witness-test-sidecar` serves OpenAI-compatible fixture responses; the test in `crates/witness-core/tests/fake-sidecar-e2e.rs` drives the full pipeline through to a sealed and verified bundle, plus a byte-level tamper assertion. Runs on every push on Linux, Windows, and macOS. No real model required.
+
+**Live end-to-end**: `crates/witness-core/tests/day-4-e2e.rs` does the same path against a real mlx-vlm sidecar. Runs locally on Apple Silicon; in CI it compiles and exits via its skip path because the runner can't host the model.
 
 Coverage target: 80%+ on `witness-core` (the cryptographic and serialization paths). Lower coverage acceptable on the Tauri shell since UI testing has diminishing returns at this stage.
 
