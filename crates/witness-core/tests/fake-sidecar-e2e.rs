@@ -139,6 +139,11 @@ async fn full_pipeline_round_trip_against_fake_sidecar() {
         report.details
     );
 
+    // Preserve the clean bundle so a reviewer can drag it into the static
+    // verifier and see three green checks before opening the tampered sibling.
+    let clean_path = bundle_path.with_extension("clean.witness");
+    std::fs::copy(&bundle_path, &clean_path).expect("snapshot clean bundle");
+
     let mut entries = read_bundle(&bundle_path).expect("read bundle");
     let audio_bytes = entries.get_mut(paths::AUDIO).expect("audio entry");
     audio_bytes[100] ^= 0x42;
@@ -164,6 +169,16 @@ async fn full_pipeline_round_trip_against_fake_sidecar() {
             .any(|d| d.contains(paths::AUDIO) && d.contains("hash mismatch")),
         "details must call out the specific asset and the failure mode: {:?}",
         tampered.details
+    );
+
+    // Surface both on-disk paths so a reviewer running
+    // `cargo test ... -- --nocapture` can drag the clean bundle into the
+    // static verifier (three green checks), then the tampered sibling (red
+    // on assets_untampered), without grepping the workspace.
+    eprintln!(
+        "\nfake-sidecar-e2e: bundles ready for the static verifier:\n  clean    {}\n  tampered {}\n",
+        clean_path.display(),
+        bundle_path.display(),
     );
 
     server.shutdown().await;
