@@ -20,19 +20,21 @@
 
 ## Why this matters
 
-A reporter is working in a country where the press is under pressure. She records a witness account on her laptop. She photographs the scene. She seals the file before she leaves the room.
+A reporter is working in a country where journalists are detained for their reporting. She records a witness account. She attaches the photos she just took. She seals the file before she leaves the room.
 
 A week later, an editor on another continent opens a single static HTML page in any browser and drags the file in. Three checks turn green:
 
 - the signature comes from the reporter's device
 - the audio and the photos have not been altered by a single byte
-- the AI model that helped transcribe the account has not been swapped for a different one
+- the AI model in the chain is the published Gemma model she named, not a substitute trained to mislead
 
-In plain language: the file in the editor's hands was made by the reporter and nobody else. Not one byte of the recording or the photos has changed since she sealed them. The AI in the chain is the published Gemma model she named, not a hostile fine-tune trained to mislead. That property has a name. It is called provenance.
+In plain language: the file in the editor's hands was made by the reporter and nobody else. Not one byte of the recording or the photos has changed since she sealed it. The AI in the chain is the model the manifest says it is, full stop. That property has a name. Archivists call it provenance. Lawyers call it chain of custody. It is the same idea: a verifiable answer to who made this, and what has happened to it since.
+
+Gemma 4 is not a black box in the corner of this picture. The manifest names the exact release by id, by revision, and by file hash, so the model is a fingerprinted participant in the chain rather than an unaudited ingredient. We chose Gemma 4 for three reasons. It runs fully on the reporter's device, so the model itself is not a leak surface. Its native multimodal capability lets one model own the audio, the images, and the reasoning, so the manifest pins one identity instead of three. The 4-bit E4B variant is small enough to run on a journalist's laptop in the field.
 
 Gemma.Witness leaves the file openly readable. What it proves is who made it, that nothing has changed since, and that the AI involved has not been substituted.
 
-No server saw any of it. No account. No upload. No metadata leaked to a platform that could be served a subpoena or a takedown.
+No server saw any of it. No account was created, no file uploaded, no metadata left behind on a platform that could later be served a subpoena or a takedown notice.
 
 That is what Gemma.Witness exists for. The rest of this document explains how.
 
