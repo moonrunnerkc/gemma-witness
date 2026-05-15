@@ -28,6 +28,10 @@ A week later, an editor on another continent opens a single static HTML page in 
 - the audio and the photos have not been altered by a single byte
 - the AI model that helped transcribe the account has not been swapped for a different one
 
+In plain language: the file in the editor's hands was made by the reporter and nobody else. Not one byte of the recording or the photos has changed since she sealed them. The AI in the chain is the published Gemma model she named, not a hostile fine-tune trained to mislead. That property has a name. It is called provenance.
+
+This is not encryption. Encryption hides a file's contents from anyone without a key. Gemma.Witness leaves the file openly readable and instead proves who made it, that nothing has changed since, and that the AI involved has not been substituted. Both matter; this project solves the second.
+
 No server saw any of it. No account. No upload. No metadata leaked to a platform that could be served a subpoena or a takedown.
 
 That is what Gemma.Witness exists for. The rest of this document explains how.
