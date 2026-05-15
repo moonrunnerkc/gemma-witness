@@ -20,7 +20,17 @@
 
 ## Why this matters
 
-A reporter in a country where the press is under pressure records a witness account on a laptop, photographs the scene, and seals the file before she leaves the room. A week later, an editor on another continent opens a single static HTML page in any browser, drags the file in, and sees three green checks: the signature is from her device, the audio and the photos have not been altered by a byte, and the AI that helped transcribe and structure the account is the model she said it was. No server saw any of it. No account, no upload, no metadata leaked to a platform that could be served a subpoena or a takedown. That is what Gemma.Witness exists for. The rest of this document explains how.
+A reporter is working in a country where the press is under pressure. She records a witness account on her laptop. She photographs the scene. She seals the file before she leaves the room.
+
+A week later, an editor on another continent opens a single static HTML page in any browser and drags the file in. Three checks turn green:
+
+- the signature comes from the reporter's device
+- the audio and the photos have not been altered by a single byte
+- the AI model that helped transcribe the account has not been swapped for a different one
+
+No server saw any of it. No account. No upload. No metadata leaked to a platform that could be served a subpoena or a takedown.
+
+That is what Gemma.Witness exists for. The rest of this document explains how.
 
 ## Status
 
