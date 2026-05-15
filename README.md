@@ -105,7 +105,11 @@ Current implementation includes:
 - static offline verifier
 - verifier integrity checks
 - model fingerprint pinning
+- advisory perceptual audio fingerprint (re-derived by `witness verify --acoustic`)
+- per-pass inference parameter capture (sampling parameters, prompt SHA-256 per pass)
+- amendment-chain reference (`manifest.amends`) for issuing signed corrections
 - Rust round-trip verification tests
+- transport-survival tests (bundles re-verified after deflate rezip)
 - GitHub Actions CI
 - coverage reporting
 - evaluation tooling
@@ -293,6 +297,20 @@ GitHub Actions currently runs:
 - degraded-path Rust tests
 - em-dash scan enforcement
 
+The full live-model end-to-end test (`crates/witness-core/tests/day-4-e2e.rs`) is a release gate, not a per-push gate. The GitHub macOS runner cannot host the Gemma 4 model, so the same test compiles and exits via its skip path in CI. The hermetic e2e against `witness-test-sidecar` runs on every push on Linux, Windows, and macOS, covering the schema-drift class of bugs. The maintainer runs the live e2e locally before tagging a release; see [`RELEASE.md`](RELEASE.md).
+
+## Platform compatibility
+
+The capture binary, the wire format, and the verifier are portable. The inference backends are not: each picks the host architecture and accelerator it was built for.
+
+| Backend       | macOS arm64 | Linux x86_64 | Windows x86_64 |
+| :------------ | :---------- | :----------- | :------------- |
+| mlx-vlm       | best        | not supported | not supported |
+| mistralrs     | ok          | ok (CUDA)    | ok (CUDA)      |
+| transformers  | slow        | ok           | ok             |
+
+CI exercises the full capture-to-seal-to-verify pipeline on Linux, Windows, and macOS via `witness-test-sidecar`, a hermetic OpenAI-compatible fake that returns precomputed fixture responses. No real model is required for that gate. The constraints in the table are intrinsic to the inference backends, not to Gemma.Witness.
+
 ## Threat model
 
 The chain runs from the moment of capture to the moment a third party reads the file back. The actors are the reporter, the editor or counsel verifying later, the model, the device, the network, and in the worst case a courtroom.
@@ -319,23 +337,6 @@ A compromised user account can sign arbitrary bundles.
 Fingerprints live in a single registry at `inference/fingerprints/`, embedded into the capture binary at compile time via the `witness-fingerprints` crate. The seal command queries the live sidecar's `/v1/models` and looks up the matching entry, so the bundle records whichever model the running sidecar is actually serving.
 
 `tools/seed-fingerprints` is the only supported way to add or update an entry. It fetches the Hugging Face LFS oid for a pinned `(model_id, revision)`, recomputes the SHA-256 of the locally cached `model.safetensors`, and refuses to write on mismatch. The MLX entry seeded prior to that tool's introduction is marked `verified_by: "local-roundtrip"` and will be re-stamped as `huggingface-lfs+local-recompute` the next time a maintainer with the model cached runs the seeder.
-
-### Cross-platform coverage
-
-CI now exercises the full capture-to-seal-to-verify pipeline on Linux and Windows via `witness-test-sidecar`, a hermetic OpenAI-compatible fake that returns precomputed fixture responses. No real model is required, so this runs on every push. The mlx-vlm and mistralrs paths still require Apple Silicon or a CUDA-equipped machine respectively for actual inference; that constraint is intrinsic to those backends, not to Gemma.Witness.
-
-| Backend       | macOS arm64 | Linux x86_64 | Windows x86_64 |
-| :------------ | :---------- | :----------- | :------------- |
-| mlx-vlm       | best        | not supported | not supported |
-| mistralrs     | ok          | ok (CUDA)    | ok (CUDA)      |
-| transformers  | slow        | ok           | ok             |
-
-The wire format is OpenAI-compatible HTTP, so the capture binary itself is portable; only the model backend the operator runs changes per host.
-
-### CI scope
-
-- Hermetic e2e (Linux, Windows, macOS): capture pipeline + seal + verify + tamper detection against the fake sidecar.
-- Live e2e (macOS, real mlx-vlm sidecar): runs locally; the GitHub macOS runner cannot host the model, so the same test compiles and exits via its skip path in CI.
 
 ### Audio model behavior
 
