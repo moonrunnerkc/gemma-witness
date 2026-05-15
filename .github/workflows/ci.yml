@@ -69,29 +69,10 @@ jobs:
           toolchain: stable
 
       - name: Cache Cargo
-        # save-if disabled here because tarpaulin's instrumented build
-        # produces target-subpath layouts that Swatinem/rust-cache flags
-        # as "Path Validation Error: Path(s) specified in the action for
-        # caching do(es) not exist" in its post-step, marking the job
-        # failed even though tarpaulin and the artifact upload both
-        # succeeded. Restore still works for any future cache hit.
         uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.7.3
         with:
           prefix-key: "v2-2026-05-15"
           cache-bin: false
-          save-if: "false"
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3.0.0
-        with:
-          version: 9
-
-      - name: Setup Node
-        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # v4.0.2
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: apps/capture/pnpm-lock.yaml
 
       - name: Install cargo-tarpaulin
         # Pinned to current. The taiki-e @latest resolver returns 0.28.0,
