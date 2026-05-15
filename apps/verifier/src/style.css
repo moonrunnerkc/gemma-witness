@@ -53,6 +53,16 @@ h1 {
   border-left-color: #dc2626;
 }
 
+.row.advisory {
+  border-left-color: #6b7280;
+  background: #fafafa;
+}
+
+.row.advisory .row-status {
+  color: #6b7280;
+  font-style: italic;
+}
+
 .row-name {
   font-weight: 600;
 }

@@ -39,6 +39,36 @@ export interface CaptureEnvironment {
   captured_at: string;
 }
 
+/** Per-pass sampling parameters from the optional inference_parameters assertion. */
+export interface PassParameters {
+  temperature: number;
+  top_p?: number;
+  max_tokens: number;
+  visual_token_budget?: number;
+  prompt_sha256: string;
+}
+
+/** The optional inference_parameters assertion. */
+export interface InferenceParameters {
+  passes: Record<string, PassParameters>;
+  sampling_seed: number | null;
+  note: string;
+}
+
+/** The optional audio_fingerprint assertion. */
+export interface AudioFingerprint {
+  algorithm: string;
+  value: string;
+  note: string;
+}
+
+/** The optional manifest.amends reference. */
+export interface AmendsReference {
+  original_bundle_id: string;
+  original_manifest_sha256: string;
+  reason: string;
+}
+
 /** The assertions block, namespaced per the manifest schema. */
 export interface Assertions {
   "gemma.witness.model_fingerprint": ModelFingerprint;
@@ -46,6 +76,8 @@ export interface Assertions {
   "gemma.witness.reasoning_trace": ReasoningTrace;
   "gemma.witness.consistency_verdict": ConsistencyVerdict;
   "gemma.witness.capture_environment": CaptureEnvironment;
+  "gemma.witness.inference_parameters"?: InferenceParameters;
+  "gemma.witness.audio_fingerprint"?: AudioFingerprint;
 }
 
 /** Top-level manifest shape. */
@@ -56,6 +88,7 @@ export interface Manifest {
   signer: SignerInfo;
   assets: AssetEntry[];
   assertions: Assertions;
+  amends?: AmendsReference;
 }
 
 /** Signer metadata embedded in the manifest. */
