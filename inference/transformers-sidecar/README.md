@@ -39,7 +39,7 @@ The sidecar exposes the same OpenAI-compatible endpoints as the other sidecars:
 
 - Text messages
 - Images via `image_url` with base64 data URI or local file path
-- Audio file paths via `input_audio` content parts (treated as a text marker; Gemma 4 does not process raw audio natively in this fallback)
+- Audio via `input_audio` content parts. The sidecar reads the bytes (path or data URI), resamples to 16 kHz mono float32 in memory using torchaudio, and passes the waveform to the processor under the `audio=` kwarg of `apply_chat_template`. The on-disk bytes that the manifest hashes are not modified.
 - Tool definitions via the `tools` parameter (injected into the prompt; the model outputs JSON that is parsed into `tool_calls`)
 
 ### Sampling parameters

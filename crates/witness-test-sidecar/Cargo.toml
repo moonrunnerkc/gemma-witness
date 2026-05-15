@@ -1,0 +1,15 @@
+[package]
+name = "witness-test-sidecar"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Hermetic OpenAI-compatible fake sidecar used in tests and CI to exercise the full capture pipeline without booting a real model."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "io-util", "sync"] }
+
+[dev-dependencies]
+reqwest = { workspace = true }

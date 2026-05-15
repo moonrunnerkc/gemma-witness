@@ -5,7 +5,10 @@ members = [
     "crates/witness-inference",
     "crates/witness-cli",
     "crates/witness-eval",
+    "crates/witness-fingerprints",
+    "crates/witness-test-sidecar",
     "apps/capture/src-tauri",
+    "tools/seed-fingerprints",
 ]
 
 [workspace.package]

@@ -41,7 +41,8 @@ pub struct BundleInputs {
     pub incident_report: IncidentReport,
     /// Consistency verdict from pass 3.
     pub consistency: ConsistencyVerdict,
-    /// Model fingerprint published in `inference/mlx-sidecar/model-fingerprint.json`.
+    /// Model fingerprint resolved from the embedded registry at
+    /// `inference/fingerprints/` (see the `witness-fingerprints` crate).
     pub model_fingerprint: ModelFingerprint,
     /// Capture environment metadata.
     pub capture_environment: CaptureEnvironment,

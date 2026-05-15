@@ -70,6 +70,58 @@ pub(crate) async fn post_chat(
     })
 }
 
+/// Ask the sidecar which model it is serving by calling `GET /v1/models` and
+/// returning the `id` of the first entry. Used by the seal path to pick the
+/// correct fingerprint registry entry at runtime.
+pub async fn fetch_active_model_id(
+    http: &reqwest::Client,
+    endpoint: &str,
+) -> Result<String, InferenceError> {
+    let url = format!("{}/v1/models", endpoint.trim_end_matches('/'));
+    let response = http
+        .get(&url)
+        .send()
+        .await
+        .map_err(|source| InferenceError::Transport {
+            endpoint: endpoint.to_string(),
+            source,
+        })?;
+    let status = response.status();
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|source| InferenceError::Transport {
+            endpoint: endpoint.to_string(),
+            source,
+        })?;
+    if !status.is_success() {
+        return Err(InferenceError::BadStatus {
+            endpoint: endpoint.to_string(),
+            status: status.as_u16(),
+            body: String::from_utf8_lossy(&bytes).chars().take(500).collect(),
+        });
+    }
+    let parsed: Value =
+        serde_json::from_slice(&bytes).map_err(|source| InferenceError::BadJson {
+            body_snippet: String::from_utf8_lossy(&bytes).chars().take(500).collect(),
+            source,
+        })?;
+    let id = parsed
+        .pointer("/data/0/id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| InferenceError::BadShape {
+            field: "data[0].id".to_string(),
+            detail: "GET /v1/models returned no model entries. confirm the sidecar is fully loaded before sealing".to_string(),
+        })?;
+    Ok(id.to_string())
+}
+
+/// Convenience around [`fetch_active_model_id`] that builds a one-shot client.
+pub async fn fetch_active_model_id_default(endpoint: &str) -> Result<String, InferenceError> {
+    let http = build_http_client(endpoint)?;
+    fetch_active_model_id(&http, endpoint).await
+}
+
 /// Extract `choices[0].message.content` as a UTF-8 string, or fail with a
 /// precise [`InferenceError::BadShape`].
 pub(crate) fn extract_text_content(payload: &Value) -> Result<String, InferenceError> {

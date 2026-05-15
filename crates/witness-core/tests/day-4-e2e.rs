@@ -53,10 +53,14 @@ fn artifacts_dir() -> PathBuf {
 }
 
 fn known_fingerprint_from_spec() -> ModelFingerprint {
+    // Reads from the unified fingerprint registry rather than the per-sidecar
+    // JSON. The registry now lives at inference/fingerprints/, and the seeded
+    // mlx-community entry has been pinned to the same revision since Day 4.
     let raw = std::fs::read_to_string(
-        workspace_root().join("inference/mlx-sidecar/model-fingerprint.json"),
+        workspace_root()
+            .join("inference/fingerprints/mlx-community__gemma-4-e4b-it-4bit__cc3b666c.json"),
     )
-    .expect("model-fingerprint.json must exist by day 1");
+    .expect("registry entry for the mlx-community model must exist");
     let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
     ModelFingerprint {
         model_id: parsed["model_id"].as_str().unwrap().to_string(),

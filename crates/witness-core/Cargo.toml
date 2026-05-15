@@ -22,11 +22,20 @@ keyring.workspace = true
 uuid.workspace = true
 rand.workspace = true
 
+[features]
+default = []
+# Reserved for the future Secure-Enclave / TPM backends documented in
+# crates/witness-core/src/key_provider.rs. Enabling this feature today fails
+# at compile time on purpose.
+hardware-keys = []
+
 [dev-dependencies]
 jsonschema.workspace = true
 proptest = "1.5"
 tempfile = "3.12"
 witness-inference = { path = "../witness-inference" }
+witness-test-sidecar = { path = "../witness-test-sidecar" }
+witness-fingerprints = { path = "../witness-fingerprints" }
 tokio = { workspace = true }
 reqwest = { workspace = true }
 keyring.workspace = true

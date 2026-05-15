@@ -10,6 +10,7 @@ pub mod bundle_zip;
 pub mod canonical;
 pub mod error;
 pub mod hashing;
+pub mod key_provider;
 pub mod keystore;
 pub mod manifest;
 pub mod signing;
@@ -20,6 +21,7 @@ pub use assertions::incident_report::{
 };
 pub use bundle_builder::{build_and_seal_bundle, BundleInputs, BundleSigner};
 pub use error::WitnessCoreError;
+pub use key_provider::{KeyProvider, PublicKeyHandle, SigningAlgorithm, SoftwareEd25519Provider};
 pub use manifest::{
     Assertions, AssetEntry, CaptureEnvironment, ConsistencyLabel, ConsistencyVerdict, Manifest,
     ModelFingerprint, ReasoningTrace, SignatureDocument, SignerInfo, MANIFEST_VERSION,

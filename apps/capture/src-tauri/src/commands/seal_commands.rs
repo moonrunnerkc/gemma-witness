@@ -5,11 +5,13 @@ use std::path::PathBuf;
 use serde::Serialize;
 use tauri::State;
 use witness_core::bundle_builder::{build_and_seal_bundle, BundleInputs, BundleSigner};
-use witness_core::keystore::{load_or_create_device_key, sign_with_device_key};
+use witness_core::key_provider::{KeyProvider, SoftwareEd25519Provider};
 use witness_core::manifest::{
     CaptureEnvironment, ConsistencyLabel, ConsistencyVerdict, ModelFingerprint,
 };
 use witness_core::WitnessCoreError;
+use witness_fingerprints::FingerprintError;
+use witness_inference::{fetch_active_model_id_default, DEFAULT_ENDPOINT};
 
 use crate::error::AppError;
 use crate::state::SharedState;
@@ -23,12 +25,30 @@ pub struct SealedBundle {
     pub path: String,
 }
 
-struct KeystoreSigner;
+/// Adapter from the abstract [`KeyProvider`] trait to the bundle builder's
+/// fixed 64-byte signature contract. Today only Ed25519 implementations
+/// flow through; when a P-256 hardware backend lands, the builder will gain
+/// a variant for variable-length signatures and this adapter will pick the
+/// right path based on `provider.algorithm()`.
+struct KeyProviderSigner<P> {
+    provider: P,
+}
 
-impl BundleSigner for KeystoreSigner {
+impl<P: KeyProvider> BundleSigner for KeyProviderSigner<P> {
     fn sign(&self, payload: &[u8]) -> Result<[u8; 64], WitnessCoreError> {
-        let signature = sign_with_device_key(payload)?;
-        Ok(signature.to_bytes())
+        let raw = self.provider.sign(payload)?;
+        if raw.len() != 64 {
+            return Err(WitnessCoreError::Keyring {
+                detail: format!(
+                    "key provider returned a {}-byte signature; the v1 manifest requires 64 (Ed25519). \
+                     a future provider may use a different algorithm; bump manifest_version when wiring it up.",
+                    raw.len()
+                ),
+            });
+        }
+        let mut sig = [0u8; 64];
+        sig.copy_from_slice(&raw);
+        Ok(sig)
     }
 }
 
@@ -54,8 +74,9 @@ pub async fn seal_bundle_cmd(state: State<'_, SharedState>) -> Result<SealedBund
         (audio, images, snap, data_dir)
     };
 
-    let device_key = load_or_create_device_key()?;
-    let fingerprint = load_model_fingerprint()?;
+    let key_provider = SoftwareEd25519Provider::new();
+    let device_key = key_provider.load_or_create_public()?;
+    let fingerprint = resolve_active_model_fingerprint().await?;
 
     let verdict_label = match snapshot.consistency_verdict.as_str() {
         "consistent" => ConsistencyLabel::Consistent,
@@ -90,7 +111,10 @@ pub async fn seal_bundle_cmd(state: State<'_, SharedState>) -> Result<SealedBund
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
     let out_path: PathBuf = bundles_dir.join(format!("incident-{stamp}.witness"));
 
-    let bundle_id = build_and_seal_bundle(&inputs, &KeystoreSigner, &out_path)?;
+    let signer = KeyProviderSigner {
+        provider: key_provider,
+    };
+    let bundle_id = build_and_seal_bundle(&inputs, &signer, &out_path)?;
 
     Ok(SealedBundle {
         bundle_id,
@@ -98,40 +122,65 @@ pub async fn seal_bundle_cmd(state: State<'_, SharedState>) -> Result<SealedBund
     })
 }
 
-fn load_model_fingerprint() -> Result<ModelFingerprint, AppError> {
-    let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    p.push("../../../inference/mlx-sidecar/model-fingerprint.json");
-    let raw = std::fs::read_to_string(&p).map_err(|err| AppError::Io {
-        path: p.display().to_string(),
-        detail: format!("read model-fingerprint.json: {err}"),
-    })?;
-    let parsed: serde_json::Value = serde_json::from_str(&raw).map_err(|err| AppError::State {
-        detail: format!("parse model-fingerprint.json: {err}"),
-    })?;
-    let model_id = parsed["model_id"]
-        .as_str()
-        .ok_or_else(|| AppError::State {
-            detail: "model-fingerprint.json missing model_id".to_string(),
-        })?
-        .to_string();
-    let revision = parsed["revision"].as_str().unwrap_or("main").to_string();
-    let sha256 = parsed["files"][0]["sha256"]
-        .as_str()
-        .ok_or_else(|| AppError::State {
-            detail: "model-fingerprint.json missing files[0].sha256".to_string(),
-        })?
-        .to_string();
-    Ok(ModelFingerprint {
-        model_id,
-        revision,
-        sha256,
-    })
+/// Ask the live sidecar which model is loaded, then resolve the matching
+/// fingerprint from the embedded registry. Replaces the previous hardcoded
+/// MLX path, which produced incorrect fingerprints on Linux/Windows and
+/// would fail at runtime in a shipped binary because the source-tree path
+/// it depended on does not exist on user machines.
+async fn resolve_active_model_fingerprint() -> Result<ModelFingerprint, AppError> {
+    let endpoint =
+        std::env::var("GW_SIDECAR_ENDPOINT").unwrap_or_else(|_| DEFAULT_ENDPOINT.to_string());
+    let model_id = fetch_active_model_id_default(&endpoint)
+        .await
+        .map_err(|err| AppError::Inference {
+            detail: format!(
+                "could not query live sidecar at {endpoint} for active model: {err}. start a sidecar before sealing"
+            ),
+        })?;
+    let revision = revision_for_model_id(&model_id);
+
+    witness_fingerprints::lookup(&model_id, revision).map_err(map_fingerprint_error)
+}
+
+/// Map well-known model_ids to the pinned revision. A model_id without a
+/// pinned revision falls back to `main`, which matches the index format and
+/// surfaces a clear "unseeded" error if no entry has been recorded yet.
+fn revision_for_model_id(model_id: &str) -> &'static str {
+    match model_id {
+        "mlx-community/gemma-4-e4b-it-4bit" => "cc3b666c01c20395e0dcebd53854504c7d9821f9",
+        _ => "main",
+    }
+}
+
+fn map_fingerprint_error(err: FingerprintError) -> AppError {
+    match err {
+        FingerprintError::Unknown { model_id, revision } => AppError::State {
+            detail: format!(
+                "the running sidecar is serving {model_id}@{revision}, which is not in the pinned fingerprint registry. add it via tools/seed-fingerprints and rebuild before sealing"
+            ),
+        },
+        FingerprintError::UnseededEntry { model_id, revision } => AppError::State {
+            detail: format!(
+                "fingerprint registry has an entry for {model_id}@{revision} but its sha256 is null. run tools/seed-fingerprints on a host with the model cached before sealing"
+            ),
+        },
+        FingerprintError::IndexSchemaMismatch { found, expected } => AppError::State {
+            detail: format!(
+                "fingerprint registry schema mismatch: embedded index reports v{found}, this build expected v{expected}. rebuild the capture app"
+            ),
+        },
+        FingerprintError::Corrupt { detail } => AppError::State {
+            detail: format!("fingerprint registry corrupt: {detail}"),
+        },
+    }
 }
 
 fn hostname_opt() -> Option<String> {
-    std::process::Command::new("hostname")
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
+    let raw = gethostname::gethostname();
+    let s = raw.to_string_lossy().trim().to_string();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
 }

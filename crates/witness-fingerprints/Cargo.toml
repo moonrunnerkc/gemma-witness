@@ -1,0 +1,20 @@
+[package]
+name = "witness-fingerprints"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Embedded registry of known-good model safetensors fingerprints for Gemma.Witness."
+build = "build.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+witness-core = { path = "../witness-core" }
+
+[build-dependencies]
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3.12"

@@ -14,6 +14,8 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 witness-core = { path = "../../../crates/witness-core" }
 witness-inference = { path = "../../../crates/witness-inference" }
+witness-fingerprints = { path = "../../../crates/witness-fingerprints" }
+gethostname = "0.5"
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }

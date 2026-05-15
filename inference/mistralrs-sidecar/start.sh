@@ -16,10 +16,10 @@ MODEL="${GW_SIDECAR_MODEL:-google/gemma-4-E4B-it}"
 PORT="${GW_SIDECAR_PORT:-8080}"
 HOST="${GW_SIDECAR_HOST:-127.0.0.1}"
 
-EVIDENCE_DIR="$REPO_ROOT/evidence/day1"
-mkdir -p "$EVIDENCE_DIR"
-PID_FILE="$EVIDENCE_DIR/mistralrs-sidecar.pid"
-LOG_FILE="$EVIDENCE_DIR/mistralrs-sidecar.log"
+STATE_DIR="$REPO_ROOT/target/sidecar-state"
+mkdir -p "$STATE_DIR"
+PID_FILE="$STATE_DIR/mistralrs-sidecar.pid"
+LOG_FILE="$STATE_DIR/mistralrs-sidecar.log"
 
 if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
   echo "mistralrs sidecar already running with pid $(cat "$PID_FILE"). run stop.sh first." >&2

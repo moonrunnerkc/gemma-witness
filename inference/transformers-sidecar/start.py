@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-"""OpenAI-compatible FastAPI sidecar for Gemma 4 E4B using Transformers."""
+"""OpenAI-compatible FastAPI sidecar for Gemma 4 E4B using Transformers.
+
+This sidecar accepts the same OpenAI-shaped requests as the mlx-vlm path
+(text + image_url + input_audio content parts) and routes them into the
+Gemma 4 multimodal processor as actual audio waveforms, not stringified
+paths. Cross-platform: CPU works; CUDA / bfloat16 used when available.
+"""
 
 import argparse
 import base64
+import io
 import json
 import os
 import re
@@ -11,12 +18,16 @@ import time
 import uuid
 from typing import Any
 
+import numpy as np
+import torch
+import torchaudio
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from PIL import Image
-import torch
-from transformers import AutoProcessor, AutoModelForImageTextToText
+from transformers import AutoModelForImageTextToText, AutoProcessor
+
+TARGET_SAMPLE_RATE = 16000
 
 app = FastAPI()
 processor: Any = None
@@ -25,6 +36,7 @@ model_id: str = ""
 
 
 def _decode_image(source: str) -> Image.Image:
+    """Decode an OpenAI-shaped image source (data URI, file URL, or path)."""
     if source.startswith("data:"):
         try:
             _, b64 = source.split(",", 1)
@@ -34,9 +46,7 @@ def _decode_image(source: str) -> Image.Image:
             raw = base64.b64decode(b64)
         except Exception as exc:
             raise ValueError(f"failed to decode base64 image: {exc}")
-        from io import BytesIO
-
-        return Image.open(BytesIO(raw)).convert("RGB")
+        return Image.open(io.BytesIO(raw)).convert("RGB")
     if source.startswith("file://"):
         source = source[7:]
     if not os.path.isfile(source):
@@ -44,11 +54,50 @@ def _decode_image(source: str) -> Image.Image:
     return Image.open(source).convert("RGB")
 
 
-def _prepare_messages(body: dict[str, Any]) -> tuple[list[dict[str, str]], list[Image.Image]]:
+def _decode_audio_waveform(source: str) -> np.ndarray:
+    """Load audio bytes from a path or data URI and return a 16 kHz mono float32 waveform.
+
+    The bytes hashed for the manifest are the bytes on disk; this resample is
+    in-memory only and never modifies the asset.
+    """
+    if source.startswith("data:"):
+        try:
+            _, b64 = source.split(",", 1)
+        except ValueError as exc:
+            raise ValueError(f"malformed audio data URI: {exc}")
+        try:
+            raw = base64.b64decode(b64)
+        except Exception as exc:
+            raise ValueError(f"failed to decode base64 audio: {exc}")
+        buffer = io.BytesIO(raw)
+        waveform, sample_rate = torchaudio.load(buffer)
+    else:
+        if source.startswith("file://"):
+            source = source[7:]
+        if not os.path.isfile(source):
+            raise ValueError(f"audio path does not exist: {source}")
+        waveform, sample_rate = torchaudio.load(source)
+
+    if waveform.shape[0] > 1:
+        waveform = waveform.mean(dim=0, keepdim=True)
+    if sample_rate != TARGET_SAMPLE_RATE:
+        resampler = torchaudio.transforms.Resample(
+            orig_freq=sample_rate, new_freq=TARGET_SAMPLE_RATE
+        )
+        waveform = resampler(waveform)
+    return waveform.squeeze(0).to(torch.float32).numpy()
+
+
+def _prepare_messages(
+    body: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[Image.Image], list[np.ndarray]]:
+    """Convert the OpenAI-shaped messages into chat-template messages plus
+    parallel lists of image PIL objects and audio numpy arrays."""
     messages = body.get("messages", [])
     tools = body.get("tools")
-    text_messages: list[dict[str, str]] = []
+    text_messages: list[dict[str, Any]] = []
     images: list[Image.Image] = []
+    audios: list[np.ndarray] = []
     tools_text = ""
     if tools:
         tools_text = (
@@ -66,42 +115,47 @@ def _prepare_messages(body: dict[str, Any]) -> tuple[list[dict[str, str]], list[
                 text_messages.append({"role": role, "content": content})
             continue
         if isinstance(content, list):
-            texts: list[str] = []
+            chat_parts: list[dict[str, Any]] = []
             for part in content:
                 ptype = part.get("type")
-                if ptype == "text":
-                    texts.append(part.get("text", ""))
+                if ptype == "text" or ptype == "input_text":
+                    chat_parts.append({"type": "text", "text": part.get("text", "")})
                 elif ptype == "image_url":
                     url = part.get("image_url", {}).get("url", "")
                     try:
                         images.append(_decode_image(url))
                     except ValueError as exc:
                         raise HTTPException(status_code=400, detail=str(exc))
-                    texts.append("<image>")
+                    chat_parts.append({"type": "image"})
                 elif ptype == "input_audio":
-                    path = part.get("input_audio", {}).get("data", "")
-                    if isinstance(path, str) and path and not os.path.isfile(path):
+                    src = part.get("input_audio", {}).get("data", "")
+                    if not isinstance(src, str) or not src:
                         raise HTTPException(
-                            status_code=400, detail=f"audio path does not exist: {path}"
+                            status_code=400, detail="input_audio.data must be a non-empty string"
                         )
-                    texts.append(f"[Audio file: {path}]")
+                    try:
+                        audios.append(_decode_audio_waveform(src))
+                    except ValueError as exc:
+                        raise HTTPException(status_code=400, detail=str(exc))
+                    chat_parts.append({"type": "audio"})
                 else:
                     raise HTTPException(
                         status_code=400, detail=f"unsupported content type: {ptype}"
                     )
-            combined = " ".join(texts)
             if role == "system" and tools_text:
-                combined = tools_text + " " + combined
-            text_messages.append({"role": role, "content": combined})
+                chat_parts.insert(0, {"type": "text", "text": tools_text})
+            text_messages.append({"role": role, "content": chat_parts})
         else:
             raise HTTPException(
                 status_code=400, detail="message content must be a string or a list of parts"
             )
 
     if tools_text and not any(m.get("role") == "system" for m in text_messages):
-        text_messages.insert(0, {"role": "system", "content": tools_text})
+        text_messages.insert(
+            0, {"role": "system", "content": [{"type": "text", "text": tools_text}]}
+        )
 
-    return text_messages, images
+    return text_messages, images, audios
 
 
 @app.get("/v1/models")
@@ -128,33 +182,34 @@ async def chat_completions(request: Request) -> JSONResponse:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"invalid JSON body: {exc}")
 
-    try:
-        text_messages, images = _prepare_messages(body)
-    except HTTPException:
-        raise
+    text_messages, images, audios = _prepare_messages(body)
 
     temperature = body.get("temperature", 0.7)
     max_tokens = body.get("max_tokens", 1024)
     top_p = body.get("top_p", 1.0)
 
     try:
-        prompt = processor.apply_chat_template(
-            text_messages, add_generation_prompt=True, tokenize=False
+        inputs = processor.apply_chat_template(
+            text_messages,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt",
+            images=images if images else None,
+            audio=audios if audios else None,
         )
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"apply_chat_template failed: {exc}")
-
-    try:
-        if images:
-            inputs = processor(text=prompt, images=images, return_tensors="pt")
-        else:
-            inputs = processor(text=prompt, return_tensors="pt")
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"processor encoding failed: {exc}")
+        raise HTTPException(
+            status_code=500, detail=f"apply_chat_template failed: {exc}"
+        )
 
     inputs = {k: v.to(model.device) for k, v in inputs.items()}
+    prompt_len = inputs["input_ids"].shape[1]
 
-    gen_kwargs: dict[str, Any] = {"max_new_tokens": max_tokens, "do_sample": temperature > 0}
+    gen_kwargs: dict[str, Any] = {
+        "max_new_tokens": max_tokens,
+        "do_sample": temperature > 0,
+    }
     if temperature > 0:
         gen_kwargs["temperature"] = temperature
     if top_p < 1.0:
@@ -166,7 +221,6 @@ async def chat_completions(request: Request) -> JSONResponse:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"model generation failed: {exc}")
 
-    prompt_len = inputs["input_ids"].shape[1]
     new_tokens = outputs[0][prompt_len:]
     try:
         decoded = processor.decode(new_tokens, skip_special_tokens=True)
@@ -247,13 +301,14 @@ if __name__ == "__main__":
 
     model_id = args.model
 
-    print(f"loading {model_id}...", flush=True)
+    print(f"loading {model_id} processor...", flush=True)
     try:
         processor = AutoProcessor.from_pretrained(model_id)
     except Exception as exc:
         print(f"failed to load processor for {model_id}: {exc}", file=sys.stderr)
         sys.exit(1)
 
+    print(f"loading {model_id} model...", flush=True)
     try:
         dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
         model = AutoModelForImageTextToText.from_pretrained(

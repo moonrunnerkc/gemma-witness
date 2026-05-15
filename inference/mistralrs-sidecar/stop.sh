@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Stops the mistralrs sidecar started by start.sh.
-# Reads the PID from evidence/day1/mistralrs-sidecar.pid and signals the process.
+# Reads the PID from target/sidecar-state/mistralrs-sidecar.pid and signals the process.
 #
 # Usage: ./stop.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-PID_FILE="$REPO_ROOT/evidence/day1/mistralrs-sidecar.pid"
+PID_FILE="$REPO_ROOT/target/sidecar-state/mistralrs-sidecar.pid"
 
 if [ ! -f "$PID_FILE" ]; then
   echo "no pid file at $PID_FILE. sidecar is not tracked as running." >&2

@@ -40,15 +40,15 @@ To stop:
 ./stop.sh
 ```
 
-## Computing the model fingerprint
+## Recording the model fingerprint
 
-After the model is first downloaded, compute the SHA-256 fingerprint so the verifier can pin it:
+Fingerprints are now centralized at `inference/fingerprints/`. After the model is first downloaded, seed the entry for `google/gemma-4-E4B-it@main`:
 
 ```bash
-./compute-fingerprint.sh
+cargo run -p seed-fingerprints -- --model-id google/gemma-4-E4B-it --revision main
 ```
 
-This locates the `.safetensors` file in the Hugging Face cache, hashes it, and writes the result into `model-fingerprint.json`.
+The seeder fetches the Hugging Face LFS oid for that revision, recomputes the SHA-256 of the locally cached `model.safetensors`, refuses to write on mismatch, and updates `inference/fingerprints/google__gemma-4-E4B-it__main.json` along with `apps/verifier/known-fingerprints.json`. The sidecar's `start.sh` refuses to boot against an unseeded entry.
 
 ## OpenAI-compatible surface
 
