@@ -293,6 +293,14 @@ GitHub Actions currently runs:
 - degraded-path Rust tests
 - em-dash scan enforcement
 
+## Threat model
+
+The chain runs from the moment of capture to the moment a third party reads the file back. The actors are the reporter, the editor or counsel verifying later, the model, the device, the network, and in the worst case a courtroom.
+
+Defends against: post-capture tampering of any asset (a flipped byte fails the named asset-hash check), substitution of the model that produced the reasoning (the manifest pins `model_id`, `revision`, and `model.safetensors` SHA-256 inside the signature scope), forgery of the manifest itself (JCS-canonicalized bytes signed with a device Ed25519 key that never leaves the OS keychain), accidental re-encoding or byte truncation during transport (asset checks fail), bundles produced by an unknown model (fingerprint membership check fails), signature forgery without the device key (infeasible under Ed25519).
+
+Does not defend against: a coerced reporter signing a falsified narrative, a device compromised before sealing, a tampered camera or microphone upstream of the file system, social engineering of the verifier's known-fingerprint list, or traffic analysis of who produced bundles when. The bundle says what the device with this key sealed at this time using this model. It does not say what actually happened.
+
 ## Current limitations
 
 These are real limitations in the current implementation.
