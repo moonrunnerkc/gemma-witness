@@ -22,6 +22,9 @@ jobs:
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v2-2026-05-15"
+          cache-bin: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -67,6 +70,9 @@ jobs:
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v2-2026-05-15"
+          cache-bin: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -149,6 +155,9 @@ jobs:
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v2-2026-05-15"
+          cache-bin: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -211,6 +220,9 @@ jobs:
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v2-2026-05-15"
+          cache-bin: false
 
       - name: Linux Tauri system deps
         if: matrix.os == 'ubuntu-latest'

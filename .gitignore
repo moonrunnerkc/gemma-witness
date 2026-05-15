@@ -31,3 +31,6 @@ inference/mlx-sidecar/models/
 # Tauri generated
 apps/capture/src-tauri/gen/
 apps/capture/dist/
+
+# Internal planning docs (keep local, not for the public repo)
+LIMITATIONS-RESOLUTION.md
