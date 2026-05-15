@@ -18,6 +18,10 @@
 
 ---
 
+## Why this matters
+
+A reporter in a country where the press is under pressure records a witness account on a laptop, photographs the scene, and seals the file before she leaves the room. A week later, an editor on another continent opens a single static HTML page in any browser, drags the file in, and sees three green checks: the signature is from her device, the audio and the photos have not been altered by a byte, and the AI that helped transcribe and structure the account is the model she said it was. No server saw any of it. No account, no upload, no metadata leaked to a platform that could be served a subpoena or a takedown. That is what Gemma.Witness exists for. The rest of this document explains how.
+
 ## Status
 
 This is a pre-release research project. The full capture and verification chain is designed to run offline, but the current implementation still has important trust and portability limitations. Read the [limitations](#current-limitations) section before relying on it for real-world evidence handling.
