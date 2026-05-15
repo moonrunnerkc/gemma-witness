@@ -132,9 +132,14 @@ jobs:
           cache-bin: false
 
       - name: Install cargo-audit and cargo-deny
+        # Versions pinned explicitly: taiki-e's "@latest" resolver picks
+        # stale binary releases for cargo-audit (0.20.0 cannot parse
+        # advisories that use CVSS 4.0, e.g. RUSTSEC-2026-0076). cargo-deny
+        # 0.14.21 predates the `unmaintained = "workspace"` and
+        # `allow-wildcard-paths` keys this repo uses in deny.toml.
         uses: taiki-e/install-action@5c256d5a578917d032b8adcd9802cfa432265631 # v2.32.18
         with:
-          tool: cargo-audit,cargo-deny
+          tool: cargo-audit@0.22.1,cargo-deny@0.19.6
 
       - name: cargo audit
         # cargo-audit reads Cargo.lock directly and does not accept --locked.
