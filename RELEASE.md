@@ -1,10 +1,14 @@
 # Release checklist
 
-CI proves the wiring on three platforms on every push via the hermetic e2e
-against `witness-test-sidecar`. It does not prove the capture binary still
-drives a real Gemma 4 sidecar end-to-end; the GitHub macOS runner cannot
-host the model. The maintainer closes that gap manually before every tagged
-release.
+CI proves the wiring on three platforms on every push via the hermetic
+e2e against `witness-test-sidecar`. The live e2e against real Gemma 4
+sidecars runs automatically: `.github/workflows/live-e2e.yml` exercises
+the full capture-to-verify pipeline against the transformers sidecar on
+Linux (`google/gemma-4-E4B-it`) and the mlx-vlm sidecar on a self-hosted
+Apple Silicon runner (`mlx-community/gemma-4-e4b-it-4bit`). The release
+workflow `needs:` that gate; a tag push without a green live-e2e is
+rejected before any release artifact is built. Maintainer setup for the
+Apple Silicon runner lives in `docs/maintainer/self-hosted-runner.md`.
 
 ## Trust anchors
 
@@ -57,44 +61,6 @@ Commit the regenerated JSON and the regenerated
 seeder cannot run (HF outage, no cached weights), do not tag the release
 until it can; the registry's provenance label is part of the trust chain.
 
-## Pre-tag steps
-
-Run on Apple Silicon with the pinned MLX model cached:
-
-```bash
-# 1. Bring up the live sidecar.
-inference/mlx-sidecar/start.sh
-
-# 2. Live e2e against the real model. Must pass, not skip.
-cargo test -p witness-core --test day-4-e2e -- --nocapture
-
-# 3. Full workspace tests once more for the record.
-cargo test --locked --workspace -- --test-threads=1
-
-# 4. Clippy + fmt gate. Must be clean.
-cargo clippy --locked --workspace --all-targets -- -D warnings
-cargo fmt --all -- --check
-
-# 5. Supply-chain audit.
-cargo audit --locked
-cargo deny --locked check advisories bans sources
-( cd apps/verifier && pnpm audit --audit-level moderate )
-( cd apps/capture && pnpm audit --audit-level moderate )
-
-# 6. Verifier build. Output should be a single HTML file.
-cd apps/verifier && pnpm install && pnpm build && cd -
-
-# 7. Spot-check the verifier with the bundle the live e2e produced.
-#    Drag it into apps/verifier/dist/verify.html. Expect every check green
-#    AND a "Signed by a known witness" row in green; otherwise add the
-#    release signer's fingerprint to apps/verifier/trusted-signers.json
-#    first.
-```
-
-If any step fails or `day-4-e2e` hits its skip path instead of running, do
-not tag. The skip path exists for CI on hosts that cannot run the model; on
-a release host it is a bug.
-
 ## Tagging
 
 ```bash
@@ -116,11 +82,3 @@ git push origin v0.X.Y
   the bundle layout. The manifest version did not change in this release
   unless explicitly noted.
 
-## When the live e2e cannot run
-
-A self-hosted Apple Silicon runner would make this automated. The
-maintenance burden of a Mac mini sitting in a closet is real, and the
-hermetic e2e already catches the schema-drift class of bugs on every push,
-so the live e2e stays as a release gate, not a per-push gate. If a
-self-hosted runner lands later, replace this checklist with a CI job; no
-migration cost beyond deleting this file.

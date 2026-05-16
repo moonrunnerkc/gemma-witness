@@ -15,7 +15,17 @@ permissions:
   attestations: write
 
 jobs:
+  live-e2e:
+    # Precondition: the live e2e against real Gemma 4 sidecars (mlx-vlm on
+    # Apple Silicon, transformers on Linux) must pass before any release
+    # artifact is built. This replaces the manual pre-tag checklist that
+    # previously lived in RELEASE.md.
+    name: live e2e gate
+    uses: ./.github/workflows/live-e2e.yml
+    secrets: inherit
+
   build-artifacts:
+    needs: [live-e2e]
     name: build (${{ matrix.os }})
     strategy:
       fail-fast: false

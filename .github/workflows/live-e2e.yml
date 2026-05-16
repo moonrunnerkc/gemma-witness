@@ -1,0 +1,237 @@
+name: Live e2e
+
+# Drives the capture-to-verify pipeline against a real Gemma 4 sidecar on
+# the same hardware that ships in releases. Two jobs:
+#
+#   live-e2e-macos    Apple Silicon self-hosted runner with mlx-vlm and the
+#                     pinned mlx-community model cached. Runs the canonical
+#                     pre-tag sequence and uploads the produced .witness
+#                     bundle plus the verifier round-trip output as
+#                     artifacts. Stays inert until a self-hosted runner is
+#                     registered with labels [self-hosted, macOS,
+#                     apple-silicon]; jobs simply queue on the missing
+#                     runner so an absent runner is visible in the Actions
+#                     UI rather than silently passing.
+#
+#   live-e2e-linux    Ubuntu, transformers sidecar serving the gated
+#                     google/gemma-4-E4B-it weights on CPU. Slow (10+ min
+#                     for cold model load) but verifies the cross-platform
+#                     fallback path end-to-end. Requires the HF_TOKEN
+#                     repository secret with read access to the Gemma 4
+#                     gated repo; the job fails with a clear message if it
+#                     is unset.
+#
+# Tag pushes do NOT trigger this workflow directly. .github/workflows/release.yml
+# invokes it as a workflow_call precondition for the release build jobs, so
+# tag-time runs happen exactly once and a failing live-e2e blocks the rest of
+# the release. workflow_dispatch is available for manual rehearsals.
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  live-e2e-macos:
+    name: live e2e (macOS Apple Silicon, mlx-vlm)
+    runs-on: [self-hosted, macOS, apple-silicon]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable as of 2025-04-09
+        with:
+          toolchain: stable
+
+      - name: Setup pnpm
+        # Needed for the verifier-build step that runs after the live test
+        # so we can render verify() against the produced bundle.
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+
+      - name: Confirm mlx-vlm model cache is present
+        # The self-hosted runner is responsible for keeping the pinned
+        # mlx-community model in ~/.cache/huggingface. We fail fast with a
+        # human-readable message rather than letting the sidecar do a
+        # multi-gigabyte download in the middle of the job.
+        run: |
+          set -euo pipefail
+          rev="cc3b666c01c20395e0dcebd53854504c7d9821f9"
+          snap="$HOME/.cache/huggingface/hub/models--mlx-community--gemma-4-e4b-it-4bit/snapshots/${rev}"
+          if [ ! -d "$snap" ]; then
+            echo "::error::pinned mlx-community model revision ${rev} is not present in the runner's HF cache at ${snap}. populate it by running inference/mlx-sidecar/start.sh once on this host before re-running this workflow." >&2
+            exit 1
+          fi
+
+      - name: Start mlx-vlm sidecar
+        run: |
+          nohup ./inference/mlx-sidecar/start.sh > /tmp/mlx-sidecar.log 2>&1 &
+          echo "started, waiting for /v1/models..."
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8080/v1/models >/dev/null 2>&1; then
+              echo "ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::sidecar did not come up within 60s; log follows" >&2
+          tail -n 200 /tmp/mlx-sidecar.log >&2 || true
+          exit 1
+
+      - name: live e2e
+        # day-4-e2e is in witness-core and does not link against the Tauri
+        # shell, so no capture frontend build is needed for this step.
+        # WITNESS_FINGERPRINT_ENTRY pins the registry file the test reads;
+        # on this runner that file matches the mlx model the sidecar serves.
+        env:
+          WITNESS_FINGERPRINT_ENTRY: mlx-community__gemma-4-e4b-it-4bit__cc3b666c.json
+          RUST_BACKTRACE: 1
+        run: cargo test --locked -p witness-core --test day-4-e2e -- --nocapture
+
+      - name: mistralrs audio probe (release gate)
+        # WITNESS_MISTRALRS_REQUIRE=1 turns "no mistral.rs reachable" into a
+        # hard failure, which is the release-gate behavior. The audit S-7
+        # work assumes the audio path is verified before a tag ships.
+        env:
+          WITNESS_MISTRALRS_REQUIRE: "1"
+          WITNESS_MISTRALRS_URL: "http://127.0.0.1:8080"
+        run: cargo test --locked -p witness-inference --test mistralrs_audio_probe -- --nocapture
+
+      - name: Build verifier
+        working-directory: apps/verifier
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Capture verifier output against the produced bundle
+        # The verifier ships as a single HTML file with all JS inlined. We
+        # render its programmatic verify() against the bundle the live
+        # pipeline just sealed, so the release artifacts include falsifiable
+        # proof that this build's verifier accepts this build's bundle.
+        run: |
+          set -euo pipefail
+          bundle=$(ls -1t target/test-artifacts/*.witness | head -n1)
+          if [ -z "$bundle" ]; then
+            echo "::error::no .witness bundle produced by day-4-e2e" >&2
+            exit 1
+          fi
+          mkdir -p target/live-e2e-output
+          cp "$bundle" target/live-e2e-output/
+          cargo run --locked -p witness-cli -- verify "$bundle" > target/live-e2e-output/verify-output.txt 2>&1 || true
+          echo "verify output saved to target/live-e2e-output/verify-output.txt"
+
+      - name: Stop sidecar
+        if: always()
+        run: |
+          if [ -f evidence/day1/mlx-sidecar.pid ]; then
+            kill "$(cat evidence/day1/mlx-sidecar.pid)" 2>/dev/null || true
+          fi
+          pkill -f "mlx_vlm.server" 2>/dev/null || true
+
+      - name: Upload live-e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: live-e2e-macos-${{ github.sha }}
+          path: |
+            target/live-e2e-output/
+            target/test-artifacts/*.witness
+            /tmp/mlx-sidecar.log
+          if-no-files-found: warn
+          retention-days: 30
+
+  live-e2e-linux:
+    name: live e2e (Linux, transformers, google/gemma-4-E4B-it)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable as of 2025-04-09
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.7.3
+        with:
+          prefix-key: "live-e2e-v2-2026-05-15"
+          cache-bin: false
+
+      - name: Install uv (pinned)
+        run: |
+          curl -LsSf https://astral.sh/uv/0.11.13/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Require HF_TOKEN
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ -z "${HF_TOKEN:-}" ]; then
+            echo "::error::secrets.HF_TOKEN is unset. The transformers sidecar loads google/gemma-4-E4B-it which is a gated repo on Hugging Face. Add a HF_TOKEN secret with read access to that repo to run this workflow." >&2
+            exit 1
+          fi
+
+      - name: Sync transformers sidecar dependencies
+        working-directory: inference/transformers-sidecar
+        run: uv sync --frozen
+
+      - name: Start transformers sidecar
+        env:
+          HUGGING_FACE_HUB_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        working-directory: inference/transformers-sidecar
+        # The model load is the slow step (multiple GB on first run). We
+        # poll /v1/models for up to 20 minutes; if it does not come up the
+        # sidecar log is dumped to stderr so the runner shows the failure.
+        run: |
+          set -euo pipefail
+          nohup uv run python start.py --model google/gemma-4-E4B-it --host 127.0.0.1 --port 8080 > /tmp/transformers-sidecar.log 2>&1 &
+          echo $! > /tmp/transformers-sidecar.pid
+          for i in $(seq 1 240); do
+            if curl -fsS http://127.0.0.1:8080/v1/models >/dev/null 2>&1; then
+              echo "ready after $((i*5))s"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::transformers sidecar did not come up within 20 minutes; log follows" >&2
+          tail -n 500 /tmp/transformers-sidecar.log >&2 || true
+          exit 1
+
+      - name: live e2e (transformers path)
+        # day-4-e2e is in witness-core and does not link against the Tauri
+        # shell; no pnpm / system-webview deps needed. The sidecar is
+        # already serving; the test polls it via /v1/models.
+        env:
+          GW_SIDECAR_MODEL: google/gemma-4-E4B-it
+          WITNESS_FINGERPRINT_ENTRY: google__gemma-4-E4B-it__3555bddc.json
+          RUST_BACKTRACE: 1
+        run: cargo test --locked -p witness-core --test day-4-e2e -- --nocapture
+
+      - name: Stop sidecar
+        if: always()
+        run: |
+          if [ -f /tmp/transformers-sidecar.pid ]; then
+            kill "$(cat /tmp/transformers-sidecar.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload live-e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: live-e2e-linux-${{ github.sha }}
+          path: |
+            target/test-artifacts/*.witness
+            /tmp/transformers-sidecar.log
+          if-no-files-found: warn
+          retention-days: 30
