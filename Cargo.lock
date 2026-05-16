@@ -2728,7 +2728,7 @@ dependencies = [
  "log",
  "secret-service",
  "security-framework 2.11.1",
- "security-framework 3.7.0",
+ "security-framework 3.6.0",
  "windows-sys 0.60.2",
  "zeroize",
 ]
@@ -4296,7 +4296,7 @@ dependencies = [
  "openssl-probe",
  "rustls-pki-types",
  "schannel",
- "security-framework 3.7.0",
+ "security-framework 3.6.0",
 ]
 
 [[package]]
@@ -4324,7 +4324,7 @@ dependencies = [
  "rustls-native-certs",
  "rustls-platform-verifier-android",
  "rustls-webpki 0.103.13",
- "security-framework 3.7.0",
+ "security-framework 3.6.0",
  "security-framework-sys",
  "webpki-root-certs",
  "windows-sys 0.61.2",
@@ -4520,9 +4520,9 @@ dependencies = [
 
 [[package]]
 name = "security-framework"
-version = "3.7.0"
+version = "3.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7f4bc775c73d9a02cde8bf7b2ec4c9d12743edf609006c7facc23998404cd1d"
+checksum = "d17b898a6d6948c3a8ee4372c17cb384f90d2e6e912ef00895b14fd7ab54ec38"
 dependencies = [
  "bitflags 2.11.1",
  "core-foundation 0.10.1",
@@ -7272,6 +7272,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
+ "core-foundation 0.10.1",
  "ed25519-dalek",
  "hex",
  "hound",
@@ -7283,6 +7284,7 @@ dependencies = [
  "reqwest 0.12.28",
  "rustfft",
  "schemars 0.8.22",
+ "security-framework 3.6.0",
  "serde",
  "serde_jcs",
  "serde_json",

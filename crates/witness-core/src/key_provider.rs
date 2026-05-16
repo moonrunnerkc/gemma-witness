@@ -9,13 +9,13 @@
 //! - [`SoftwareEd25519Provider`]: Ed25519 seed in the OS keychain. Same wire
 //!   format the project has shipped since Day 1.
 //!
-//! Reserved for hardware-backed backends (planned, not yet implemented):
-//! - SecureEnclaveProvider on macOS using ECDSA P-256 via the SEP token.
-//! - TpmProvider on Windows (ncrypt) and Linux (tpm2-tss), also P-256.
+//! Hardware-backed backend (behind `--features hardware-keys`):
+//! - [`crate::secure_enclave::SecureEnclaveProvider`] on macOS, using ECDSA
+//!   P-256 routed through the Secure Enclave token.
 //!
-//! When those land, [`SigningAlgorithm`] gains new variants and the manifest
-//! spec bumps to `manifest_version=2` with a tagged `signer.algorithm` field.
-//! Today the only allowed value is `ed25519`, matching the existing schema.
+//! Reserved for future targets (not yet implemented):
+//! - TpmProvider on Linux (tpm2-tss), P-256 again.
+//! - WindowsPlatformKeyProvider on Windows (ncrypt), P-256.
 
 use std::sync::Mutex;
 
@@ -205,21 +205,17 @@ impl KeyProvider for SoftwareEcdsaP256Provider {
     }
 }
 
-/// Marker stub for the planned hardware-backed providers.
-///
-/// Compilation under the `hardware-keys` feature is intentionally not yet
-/// wired up; enabling it will surface a build-time error that points at this
-/// module so a maintainer cannot accidentally ship a binary that claims
-/// hardware backing without delivering it. When the SEP and TPM impls land,
-/// each will live behind its own `#[cfg(target_os = "...")]` block here.
-#[cfg(feature = "hardware-keys")]
-mod hardware {
-    compile_error!(
-        "the `hardware-keys` feature is reserved for a future Secure-Enclave / TPM backend. \
-         the corresponding `KeyProvider` implementations are not yet wired up. \
-         build without --features hardware-keys, or contribute the missing backend."
-    );
-}
+// Per-target gating for the `hardware-keys` feature. Each supported target
+// pulls in its own backend module from a sibling file; targets without a
+// backend yet (Linux TPM, Windows NCrypt) still produce a build-time error
+// so a maintainer cannot accidentally ship a binary that claims hardware
+// backing without delivering it.
+#[cfg(all(feature = "hardware-keys", not(any(target_os = "macos"))))]
+compile_error!(
+    "the `hardware-keys` feature is currently implemented for macOS (Secure Enclave) only. \
+     Linux (TPM 2.0) and Windows (NCrypt) backends are tracked but not yet wired up. \
+     build without --features hardware-keys on this target, or contribute the missing backend."
+);
 
 #[cfg(test)]
 mod tests {

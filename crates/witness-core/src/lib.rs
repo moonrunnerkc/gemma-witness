@@ -14,6 +14,8 @@ pub mod key_provider;
 pub mod keystore;
 pub mod keystore_p256;
 pub mod manifest;
+#[cfg(all(target_os = "macos", feature = "hardware-keys"))]
+pub mod secure_enclave;
 pub mod signing;
 pub mod signing_ecdsa;
 pub mod verifier;

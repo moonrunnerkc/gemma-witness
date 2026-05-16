@@ -34,6 +34,13 @@ default = []
 # at compile time on purpose.
 hardware-keys = []
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# Used only under `--features hardware-keys` for the Secure Enclave provider.
+# Pinned to a 3.x line that builds on stable Rust 1.80 (our MSRV); 3.7 raised
+# rust-version to 1.85.
+security-framework = { version = "~3.6", default-features = false, features = ["OSX_10_15"] }
+core-foundation = "0.10"
+
 [dev-dependencies]
 jsonschema.workspace = true
 proptest = "1.5"
