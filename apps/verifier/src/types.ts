@@ -115,6 +115,13 @@ export interface KnownFingerprint {
   sha256: string;
   added_at: string;
   note: string;
+  /** Storage format of the pinned artifact. Optional for back-compat with
+   *  fingerprint lists generated before the format field existed; readers
+   *  should treat absence as `"safetensors"`. */
+  format?: "safetensors" | "gguf";
+  /** Path of the file inside the model repo that the SHA-256 hashes. Optional
+   *  for back-compat; readers should treat absence as `"model.safetensors"`. */
+  primary_file?: string;
 }
 
 /** The parsed known-fingerprints.json envelope. */

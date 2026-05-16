@@ -6,17 +6,40 @@
 //! self-contained registry and the seal path no longer depends on the source
 //! tree being present at runtime.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use witness_core::manifest::ModelFingerprint;
 
 const INDEX_JSON: &str = include_str!("../../../inference/fingerprints/index.json");
+
+/// How the model's weights are stored on disk.
+///
+/// `safetensors` is the Hugging Face safetensors format used by mlx-vlm and
+/// transformers; the pinned hash is over `model.safetensors`. `gguf` is the
+/// quantized format used by mistral.rs when loading a GGUF blob; the pinned
+/// hash is over the specific `*.gguf` file the sidecar loads.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModelFormat {
+    #[default]
+    Safetensors,
+    Gguf,
+}
 
 /// One registry entry as serialized in `inference/fingerprints/*.json`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RegistryEntry {
     pub model_id: String,
     pub revision: String,
+    /// Storage format of the model weights. Defaults to `safetensors` so
+    /// pre-format registry files keep parsing.
+    #[serde(default)]
+    pub format: ModelFormat,
+    /// Path within the model repository of the file whose SHA-256 is the
+    /// fingerprint anchor. Defaults to `"model.safetensors"` for back-compat
+    /// with entries written before the format field existed.
+    #[serde(default = "default_primary_file")]
+    pub primary_file: String,
     pub files: Vec<RegistryFile>,
     #[serde(default)]
     pub source_url: Option<String>,
@@ -28,6 +51,10 @@ pub struct RegistryEntry {
     pub verified_at_utc: Option<String>,
     #[serde(default)]
     pub note: Option<String>,
+}
+
+fn default_primary_file() -> String {
+    "model.safetensors".to_string()
 }
 
 /// One file inside a registry entry. `safetensors` is the file the verifier
@@ -91,14 +118,17 @@ const INDEX_SCHEMA_VERSION: u32 = 1;
 /// - [`FingerprintError::Corrupt`] if the embedded JSON is malformed.
 pub fn lookup(model_id: &str, revision: &str) -> Result<ModelFingerprint, FingerprintError> {
     let entry = find_entry(model_id, revision)?;
-    let safetensors = entry
+    let primary = entry
         .files
         .iter()
-        .find(|f| f.path == "model.safetensors")
+        .find(|f| f.path == entry.primary_file)
         .ok_or_else(|| FingerprintError::Corrupt {
-            detail: format!("entry for {model_id}@{revision} has no model.safetensors row"),
+            detail: format!(
+                "entry for {model_id}@{revision} declares primary_file={:?} but no matching row exists in files[]",
+                entry.primary_file
+            ),
         })?;
-    let sha256 = safetensors
+    let sha256 = primary
         .sha256
         .clone()
         .ok_or_else(|| FingerprintError::UnseededEntry {
@@ -119,13 +149,14 @@ pub fn entry(model_id: &str, revision: &str) -> Result<RegistryEntry, Fingerprin
 }
 
 /// Returns every known fingerprint hash for use by the verifier's
-/// known-fingerprint list.
+/// known-fingerprint list. The hash returned per entry is the SHA-256 of the
+/// file named by that entry's `primary_file`.
 pub fn all_known_sha256() -> Result<Vec<String>, FingerprintError> {
     let index = parse_index()?;
     let mut out = Vec::with_capacity(index.entries.len());
     for idx in &index.entries {
         let entry = parse_entry(&idx.model_id, &idx.revision)?;
-        if let Some(file) = entry.files.iter().find(|f| f.path == "model.safetensors") {
+        if let Some(file) = entry.files.iter().find(|f| f.path == entry.primary_file) {
             if let Some(sha) = &file.sha256 {
                 out.push(sha.clone());
             }
@@ -281,5 +312,47 @@ mod tests {
         assert!(known
             .iter()
             .any(|h| h == "339409bd18494955556e1fde6ccc15faaa9f707b911b74791fe290b9d722beed"));
+    }
+
+    #[test]
+    fn entry_without_format_defaults_to_safetensors_primary() {
+        // Back-compat: entries written before the format/primary_file fields
+        // existed must still parse and resolve their primary file as
+        // `model.safetensors`.
+        let raw = r#"{
+            "model_id": "legacy/model",
+            "revision": "abc",
+            "files": [
+                { "path": "model.safetensors", "sha256": "deadbeef", "bytes": 4 }
+            ]
+        }"#;
+        let entry: RegistryEntry = serde_json::from_str(raw).expect("legacy entry parses");
+        assert_eq!(entry.format, ModelFormat::Safetensors);
+        assert_eq!(entry.primary_file, "model.safetensors");
+    }
+
+    #[test]
+    fn entry_with_gguf_format_picks_named_artifact() {
+        // A GGUF entry pins a specific *.gguf file as the fingerprint anchor.
+        // lookup() must read primary_file rather than hardcoding
+        // model.safetensors.
+        let raw = r#"{
+            "model_id": "google/gemma-4-e4b-it",
+            "revision": "main",
+            "format": "gguf",
+            "primary_file": "gemma-4-e4b-it.Q4_K_M.gguf",
+            "files": [
+                { "path": "gemma-4-e4b-it.Q4_K_M.gguf", "sha256": "feedbeef", "bytes": 100 }
+            ]
+        }"#;
+        let entry: RegistryEntry = serde_json::from_str(raw).expect("gguf entry parses");
+        assert_eq!(entry.format, ModelFormat::Gguf);
+        assert_eq!(entry.primary_file, "gemma-4-e4b-it.Q4_K_M.gguf");
+        let primary = entry
+            .files
+            .iter()
+            .find(|f| f.path == entry.primary_file)
+            .expect("primary file present in files[]");
+        assert_eq!(primary.sha256.as_deref(), Some("feedbeef"));
     }
 }
