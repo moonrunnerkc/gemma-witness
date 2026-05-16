@@ -29,7 +29,7 @@ pub use error::WitnessCoreError;
 pub use key_provider::{KeyProvider, PublicKeyHandle, SigningAlgorithm, SoftwareEd25519Provider};
 pub use manifest::{
     AmendsReference, Assertions, AssetEntry, CaptureEnvironment, ConsistencyLabel,
-    ConsistencyVerdict, Manifest, ModelFingerprint, ReasoningTrace, SignatureDocument, SignerInfo,
-    MANIFEST_VERSION,
+    ConsistencyVerdict, Manifest, ModelFingerprint, ReasoningTrace, SignatureDocument,
+    SignerAttestation, SignerInfo, MANIFEST_VERSION,
 };
 pub use verifier::{verify_amendment_chain, verify_bundle, KnownFingerprint, VerificationReport};

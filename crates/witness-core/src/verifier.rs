@@ -15,7 +15,7 @@ use crate::bundle_zip::read_bundle;
 use crate::canonical::canonicalize;
 use crate::error::WitnessCoreError;
 use crate::hashing::hash_bytes_hex;
-use crate::manifest::{Manifest, SignatureDocument, MANIFEST_VERSION};
+use crate::manifest::{Manifest, SignatureDocument};
 use crate::signing::verify_pem;
 
 /// One known-good model fingerprint accepted by the verifier.
@@ -42,15 +42,37 @@ impl From<crate::manifest::ModelFingerprint> for KnownFingerprint {
 }
 
 /// Versions of `manifest_version` this verifier implementation supports.
-pub const SUPPORTED_MANIFEST_VERSIONS: &[u32] = &[MANIFEST_VERSION];
+///
+/// v1 is the original Ed25519-only manifest shape. v2 widens
+/// `signer.algorithm` to allow `ecdsa-p256` and adds an optional
+/// `signer.attestation` blob for hardware-backed key provenance. The
+/// verifier accepts both; per-version validity is enforced in
+/// [`check_signature`].
+pub const SUPPORTED_MANIFEST_VERSIONS: &[u32] = &[1, 2];
 
 /// The only value `signature.json.signed_payload` may take.
 const EXPECTED_SIGNED_PAYLOAD: &str = bundle_paths::MANIFEST;
 /// The only value `signature.json.canonicalization` may take.
 const EXPECTED_CANONICALIZATION: &str = "rfc8785";
-/// The only value `signature.json.algorithm` and `manifest.signer.algorithm`
-/// may take in v1 bundles.
-const EXPECTED_ALGORITHM: &str = "ed25519";
+
+/// Wire string for Ed25519 in both `signature.algorithm` and
+/// `manifest.signer.algorithm`.
+const ALGORITHM_ED25519: &str = "ed25519";
+/// Wire string for ECDSA P-256, permitted only in v2 bundles. The actual
+/// verification implementation lands in a follow-up; until then, a bundle
+/// declaring this algorithm fails the signature row with a clear "not yet
+/// implemented" message rather than being misread as Ed25519.
+const ALGORITHM_ECDSA_P256: &str = "ecdsa-p256";
+
+/// Returns the set of `signature.algorithm` and `manifest.signer.algorithm`
+/// values permitted for a given `manifest_version`.
+fn algorithms_permitted_for_version(version: u32) -> &'static [&'static str] {
+    match version {
+        1 => &[ALGORITHM_ED25519],
+        2 => &[ALGORITHM_ED25519, ALGORITHM_ECDSA_P256],
+        _ => &[],
+    }
+}
 
 /// Outcome of a bundle verification run. Every step is a typed boolean plus
 /// a detail string suitable for surfacing to a UI.
@@ -237,20 +259,35 @@ fn check_signature(
     signature_doc: &SignatureDocument,
     details: &mut Vec<String>,
 ) -> bool {
-    if signature_doc.algorithm != EXPECTED_ALGORITHM {
+    let permitted = algorithms_permitted_for_version(manifest.manifest_version);
+    if !permitted.contains(&signature_doc.algorithm.as_str()) {
         details.push(format!(
-            "signature.algorithm is \"{}\"; expected \"{EXPECTED_ALGORITHM}\". \
-             only Ed25519 is supported by this verifier version.",
-            signature_doc.algorithm
+            "signature.algorithm is \"{}\"; manifest_version {} permits only {:?}. \
+             the bundle may be malformed or produced by a verifier-incompatible capture app.",
+            signature_doc.algorithm, manifest.manifest_version, permitted
         ));
         return false;
     }
-    if manifest.signer.algorithm != EXPECTED_ALGORITHM {
+    if !permitted.contains(&manifest.signer.algorithm.as_str()) {
         details.push(format!(
-            "manifest.signer.algorithm is \"{}\"; expected \"{EXPECTED_ALGORITHM}\". \
-             only Ed25519 is supported by this verifier version.",
-            manifest.signer.algorithm
+            "manifest.signer.algorithm is \"{}\"; manifest_version {} permits only {:?}. \
+             the bundle may be malformed or produced by a verifier-incompatible capture app.",
+            manifest.signer.algorithm, manifest.manifest_version, permitted
         ));
+        return false;
+    }
+    if signature_doc.algorithm != manifest.signer.algorithm {
+        details.push(format!(
+            "signature.algorithm \"{}\" does not match manifest.signer.algorithm \"{}\". \
+             the two must agree; a mismatch indicates the signature was copied from a different bundle.",
+            signature_doc.algorithm, manifest.signer.algorithm
+        ));
+        return false;
+    }
+    if manifest.manifest_version == 1 && manifest.signer.attestation.is_some() {
+        details.push(
+            "manifest.signer.attestation is present on a v1 manifest. the attestation blob is a v2-only field; a v1 bundle that carries it is malformed.".to_string()
+        );
         return false;
     }
     if signature_doc.canonicalization != EXPECTED_CANONICALIZATION {
@@ -294,16 +331,44 @@ fn check_signature(
             return false;
         }
     };
+    match manifest.signer.algorithm.as_str() {
+        ALGORITHM_ED25519 => verify_ed25519(
+            &manifest.signer.public_key_pem,
+            &canonical,
+            &signature_bytes,
+            details,
+        ),
+        ALGORITHM_ECDSA_P256 => {
+            details.push(
+                "manifest.signer.algorithm is \"ecdsa-p256\"; this verifier build was compiled without the ECDSA P-256 backend. install a newer verifier to validate this bundle.".to_string(),
+            );
+            false
+        }
+        other => {
+            details.push(format!(
+                "manifest.signer.algorithm \"{other}\" reached signature dispatch but no backend matches. this is a verifier bug; report it."
+            ));
+            false
+        }
+    }
+}
+
+fn verify_ed25519(
+    public_key_pem: &str,
+    canonical_manifest: &[u8],
+    signature_bytes: &[u8],
+    details: &mut Vec<String>,
+) -> bool {
     if signature_bytes.len() != 64 {
         details.push(format!(
-            "signature was {} bytes; expected 64. bundle is malformed",
+            "Ed25519 signature was {} bytes; expected 64. bundle is malformed",
             signature_bytes.len()
         ));
         return false;
     }
     let mut sig_array = [0u8; 64];
-    sig_array.copy_from_slice(&signature_bytes);
-    match verify_pem(&manifest.signer.public_key_pem, &canonical, &sig_array) {
+    sig_array.copy_from_slice(signature_bytes);
+    match verify_pem(public_key_pem, canonical_manifest, &sig_array) {
         Ok(()) => true,
         Err(err) => {
             details.push(format!("signature did not verify: {err}"));

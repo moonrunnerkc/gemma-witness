@@ -446,6 +446,123 @@ async function runTests(): Promise<void> {
     console.log("PASS T11");
   }
 
+  // T12 (WS3-1): manifest_version=2 is accepted by the version router. The
+  // signature row still fails because we mutated the manifest without
+  // re-signing, but the failure must be a signature mismatch, not "version
+  // not supported". This proves the verifier accepts v2 structurally.
+  console.log("--- T12 (positive): manifest_version=2 routes past the version gate");
+  {
+    const mutated = mutateBundle((entries) => {
+      const raw = entries.get("manifest.json")!;
+      const manifest = JSON.parse(strFromU8(raw));
+      manifest.manifest_version = 2;
+      entries.set(
+        "manifest.json",
+        new TextEncoder().encode(JSON.stringify(manifest)),
+      );
+    });
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
+    assert(!outcome.ok, "T12: overall fails because the manifest was mutated without re-signing");
+    assert(
+      !outcome.checks.some((c) => c.name.includes("Manifest version") && !c.passed),
+      "T12: there must be no failing version row; v2 is supported",
+    );
+    const sigRow = rowByName(outcome, "Signature valid");
+    assert(!sigRow.passed, "T12: signature row fails because manifest bytes changed");
+    console.log("PASS T12");
+  }
+
+  // T13 (WS3-1): A v2 manifest declaring "ecdsa-p256" fails the signature row
+  // with a clear "not yet implemented" message rather than panicking or
+  // misverifying. The ECDSA P-256 backend lands in a follow-up.
+  console.log("--- T13 (negative): v2 + ecdsa-p256 fails with a clear 'not implemented' message");
+  {
+    const mutated = mutateBundle((entries) => {
+      const raw = entries.get("manifest.json")!;
+      const manifest = JSON.parse(strFromU8(raw));
+      manifest.manifest_version = 2;
+      manifest.signer.algorithm = "ecdsa-p256";
+      entries.set(
+        "manifest.json",
+        new TextEncoder().encode(JSON.stringify(manifest)),
+      );
+      const rawSig = entries.get("signature.json")!;
+      const sigDoc = JSON.parse(strFromU8(rawSig));
+      sigDoc.algorithm = "ecdsa-p256";
+      entries.set(
+        "signature.json",
+        new TextEncoder().encode(JSON.stringify(sigDoc)),
+      );
+    });
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
+    assert(!outcome.ok, "T13: overall should fail");
+    const sigRow = rowByName(outcome, "Signature valid");
+    assert(!sigRow.passed, "T13: signature row should fail");
+    assert(
+      sigRow.details.some((d) => d.includes("ecdsa-p256") && d.includes("ECDSA P-256 backend")),
+      `T13: detail must name the missing P-256 backend; got ${JSON.stringify(sigRow.details)}`,
+    );
+    console.log("PASS T13");
+  }
+
+  // T14 (WS3-1): A v1 manifest carrying signer.attestation is rejected at the
+  // structural validation gate (bundle-reader), surfacing as a top-level error
+  // rather than a check row. The attestation blob is a v2-only field.
+  console.log("--- T14 (negative): v1 + signer.attestation is rejected at manifest validation");
+  {
+    const mutated = mutateBundle((entries) => {
+      const raw = entries.get("manifest.json")!;
+      const manifest = JSON.parse(strFromU8(raw));
+      manifest.signer.attestation = {
+        format: "apple-sep-v1",
+        payload_b64: "QUFFQg==",
+      };
+      entries.set(
+        "manifest.json",
+        new TextEncoder().encode(JSON.stringify(manifest)),
+      );
+    });
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
+    assert(!outcome.ok, "T14: overall should fail");
+    assert(
+      outcome.error !== null && outcome.error.includes("attestation") && outcome.error.includes("v1"),
+      `T14: top-level error must name the v1/attestation incompatibility; got ${outcome.error}`,
+    );
+    console.log("PASS T14");
+  }
+
+  // T15 (WS3-1): A v1 manifest declaring "ecdsa-p256" is rejected at the
+  // signature row with a "permits only" detail. v1 manifests are restricted
+  // to ed25519 even when the wire form is otherwise well-formed.
+  console.log("--- T15 (negative): v1 + ecdsa-p256 fails the signature row with 'permits only'");
+  {
+    const mutated = mutateBundle((entries) => {
+      const raw = entries.get("manifest.json")!;
+      const manifest = JSON.parse(strFromU8(raw));
+      manifest.signer.algorithm = "ecdsa-p256";
+      entries.set(
+        "manifest.json",
+        new TextEncoder().encode(JSON.stringify(manifest)),
+      );
+      const rawSig = entries.get("signature.json")!;
+      const sigDoc = JSON.parse(strFromU8(rawSig));
+      sigDoc.algorithm = "ecdsa-p256";
+      entries.set(
+        "signature.json",
+        new TextEncoder().encode(JSON.stringify(sigDoc)),
+      );
+    });
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
+    assert(!outcome.ok, "T15: overall should fail");
+    const sigRow = rowByName(outcome, "Signature valid");
+    assert(!sigRow.passed, "T15: signature row should fail");
+    assert(
+      sigRow.details.some((d) => d.includes("permits only") && d.includes("ed25519")),
+      `T15: detail must name the permitted set for v1; got ${JSON.stringify(sigRow.details)}`,
+    );
+    console.log("PASS T15");
+  }
+
   console.log("\n=== ALL E2E TESTS PASSED ===");
 }
 

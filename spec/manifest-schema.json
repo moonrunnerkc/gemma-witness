@@ -13,6 +13,22 @@
     "assets",
     "assertions"
   ],
+  "allOf": [
+    {
+      "description": "v1 bundles only allow ed25519 and forbid the hardware-key attestation blob. This keeps every shipped v1 bundle round-trippable while preventing a v1 verifier from being asked to render a field it does not understand.",
+      "if": { "properties": { "manifest_version": { "const": 1 } } },
+      "then": {
+        "properties": {
+          "signer": {
+            "properties": {
+              "algorithm": { "const": "ed25519" }
+            },
+            "not": { "required": ["attestation"] }
+          }
+        }
+      }
+    }
+  ],
   "properties": {
     "amends": {
       "description": "Optional pointer at the bundle this one supersedes. Present only on amendment bundles. The verifier displays the reference; it does not merge bundles or hide the original. Verifiers MUST check that the amending bundle's signer.key_id matches original_signer_key_id and refuse to treat the bundle as a continuation of the chain on mismatch.",
@@ -42,9 +58,9 @@
       }
     },
     "manifest_version": {
-      "description": "Integer schema version. The verifier routes on this; bump on every incompatible change.",
+      "description": "Integer schema version. The verifier routes on this; bump on every incompatible change. v1 bundles use Ed25519-only software signing. v2 widens signer.algorithm to allow ecdsa-p256 and adds an optional signer.attestation blob for hardware-backed key provenance.",
       "type": "integer",
-      "const": 1
+      "enum": [1, 2]
     },
     "bundle_id": {
       "description": "UUID v4 identifying this bundle.",
@@ -61,12 +77,43 @@
       "additionalProperties": false,
       "required": ["algorithm", "public_key_pem", "key_id"],
       "properties": {
-        "algorithm": { "type": "string", "const": "ed25519" },
-        "public_key_pem": { "type": "string", "minLength": 1 },
+        "algorithm": {
+          "description": "Signing algorithm used to produce signature.json over the canonicalized manifest. v1 manifests are restricted to ed25519. v2 manifests may also use ecdsa-p256 (Secure Enclave on macOS, TPM 2.0 on Linux, NCrypt on Windows).",
+          "type": "string",
+          "enum": ["ed25519", "ecdsa-p256"]
+        },
+        "public_key_pem": {
+          "description": "SubjectPublicKeyInfo PEM. Ed25519 keys use the standard PKCS#8 SPKI form; ECDSA P-256 keys use the SECG/RFC 5480 SPKI form.",
+          "type": "string",
+          "minLength": 1
+        },
         "key_id": {
-          "description": "SHA-256 of the raw 32-byte public key, lowercase hex.",
+          "description": "Lowercase hex SHA-256 of the raw public-key bytes. For Ed25519 this is SHA-256 of the 32-byte point; for ECDSA P-256 it is SHA-256 of the 65-byte uncompressed-point encoding (0x04 || X || Y).",
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
+        },
+        "attestation": {
+          "description": "Optional hardware-backed key provenance. Present only on v2 manifests signed by a Secure Enclave / TPM / NCrypt key that can produce an attestation chain. Verifiers display the blob; they do not gate on it without an explicit pinning policy.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["format", "payload_b64"],
+          "properties": {
+            "format": {
+              "description": "Identifier of the attestation document format. Known values: apple-sep-v1 (Secure Enclave SEP attestation), tpm2-quote-v1 (TPM 2.0 quote+certify pair), ncrypt-v1 (Windows platform-key attestation).",
+              "type": "string",
+              "minLength": 1
+            },
+            "payload_b64": {
+              "description": "Base64 of the attestation payload bytes. Format-specific; opaque to the verifier core.",
+              "type": "string",
+              "minLength": 1
+            },
+            "certificate_chain_b64": {
+              "description": "Optional base64-encoded DER X.509 chain rooting the attestation, leaf-first.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
         }
       }
     },

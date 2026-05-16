@@ -162,7 +162,11 @@ function runCheckSync(name: string, fn: () => CheckOutcome): CheckOutcome {
 }
 
 function routeVersion(manifest: Manifest): CheckOutcome {
-  const supported = [1];
+  // v1: original Ed25519-only manifest. v2: widens signer.algorithm to allow
+  // ecdsa-p256 and adds an optional signer.attestation blob for hardware-
+  // backed key provenance. Per-version algorithm validity is enforced in
+  // verify-signature.ts; this routing only gates the version itself.
+  const supported = [1, 2];
   if (!supported.includes(manifest.manifest_version)) {
     return {
       name: "Manifest version supported",

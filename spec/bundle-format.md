@@ -41,6 +41,13 @@ The manifest's integrity is enforced by the signature, not by an entry in `asset
 
 `manifest.manifest_version` is an integer. The verifier reads it first and routes to the matching validator. Any change to the manifest layout that would break an older verifier requires bumping this number and shipping a new validator branch.
 
+Two versions exist today:
+
+- **v1**: Ed25519 software-key signing. `signer.algorithm` is always `"ed25519"`; `signer.attestation` is not permitted. Every bundle the capture app has emitted since launch is v1.
+- **v2**: Adds `ecdsa-p256` as a permitted `signer.algorithm` value (Secure Enclave on macOS, TPM 2.0 on Linux, NCrypt on Windows are all P-256-native) and adds an optional `signer.attestation` blob carrying the hardware-key attestation document. v2 manifests may also use Ed25519 (a hardware-backed Ed25519 path would still emit v2). The seal path will start emitting v2 once a hardware-backed key provider is wired up; the verifier accepts v2 today so the format gate is not the bottleneck.
+
+The verifier accepts every version in `crates/witness-core/src/verifier.rs::SUPPORTED_MANIFEST_VERSIONS` and rejects unknown versions with a clear "obtain a newer verifier" message.
+
 ## Canonicalization edges
 
 `PassParameters.temperature` and `top_p` are unconstrained `number` fields in the schema today, because the inference pipeline already records values like `0.2` and `0.9` and tightening the schema would invalidate existing fixtures. RFC 8785 cross-language conformance is enforced via `tests/fixtures/canonicalization-conformance/`. If a future pass records a value whose canonical-bytes form diverges between `serde_jcs` (Rust) and `canonicalize` (npm), add a fixture case there before merging.

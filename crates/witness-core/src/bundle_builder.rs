@@ -184,6 +184,7 @@ pub fn build_and_seal_bundle<S: BundleSigner>(
             algorithm: "ed25519".to_string(),
             public_key_pem: inputs.signer_public_key_pem.clone(),
             key_id: inputs.signer_key_id.clone(),
+            attestation: None,
         },
         assets,
         assertions: Assertions {

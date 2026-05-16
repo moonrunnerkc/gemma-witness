@@ -12,7 +12,8 @@ use serde_json::Value;
 use witness_core::bundle_builder::paths as bundle_paths;
 use witness_core::manifest::{
     AmendsReference, Assertions, AssetEntry, CaptureEnvironment, ConsistencyLabel,
-    ConsistencyVerdict, Manifest, ModelFingerprint, ReasoningTrace, SignerInfo, MANIFEST_VERSION,
+    ConsistencyVerdict, Manifest, ModelFingerprint, ReasoningTrace, SignerAttestation, SignerInfo,
+    MANIFEST_VERSION,
 };
 use witness_core::{
     AudioFingerprint, EvidenceKind, EvidenceReference, IncidentReport, IncidentType,
@@ -55,6 +56,7 @@ fn minimal_manifest() -> Manifest {
             public_key_pem: "-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n"
                 .to_string(),
             key_id: "0".repeat(64),
+            attestation: None,
         },
         assets: vec![AssetEntry {
             path: bundle_paths::AUDIO.to_string(),
@@ -242,5 +244,94 @@ fn manifest_with_unknown_assertion_is_rejected() {
     assert!(
         result.is_err(),
         "schema must reject unknown assertions due to additionalProperties:false"
+    );
+}
+
+#[test]
+fn schema_accepts_v2_manifest_with_ed25519() {
+    let schema = load_schema();
+    let compiled = JSONSchema::compile(&schema).expect("compile schema");
+    let mut payload = serde_json::to_value(minimal_manifest()).expect("serialize manifest");
+    payload["manifest_version"] = serde_json::json!(2);
+    let result = compiled.validate(&payload);
+    if let Err(errors) = result {
+        let messages: Vec<String> = errors.map(|e| e.to_string()).collect();
+        panic!("v2 manifest with ed25519 must validate: {messages:?}");
+    }
+}
+
+#[test]
+fn schema_accepts_v2_manifest_with_ecdsa_p256_and_attestation() {
+    let schema = load_schema();
+    let compiled = JSONSchema::compile(&schema).expect("compile schema");
+    let mut manifest = minimal_manifest();
+    manifest.signer.algorithm = "ecdsa-p256".to_string();
+    manifest.signer.attestation = Some(SignerAttestation {
+        format: "apple-sep-v1".to_string(),
+        payload_b64: "QUFFQg==".to_string(),
+        certificate_chain_b64: Some(vec!["Q0VSVA==".to_string()]),
+    });
+    let mut payload = serde_json::to_value(&manifest).expect("serialize manifest");
+    payload["manifest_version"] = serde_json::json!(2);
+    let result = compiled.validate(&payload);
+    if let Err(errors) = result {
+        let messages: Vec<String> = errors.map(|e| e.to_string()).collect();
+        panic!("v2 manifest with ecdsa-p256 + attestation must validate: {messages:?}");
+    }
+}
+
+#[test]
+fn schema_rejects_v1_manifest_with_ecdsa_p256() {
+    let schema = load_schema();
+    let compiled = JSONSchema::compile(&schema).expect("compile schema");
+    let mut manifest = minimal_manifest();
+    manifest.signer.algorithm = "ecdsa-p256".to_string();
+    let payload = serde_json::to_value(&manifest).expect("serialize manifest");
+    assert!(
+        compiled.validate(&payload).is_err(),
+        "v1 manifests must restrict signer.algorithm to ed25519"
+    );
+}
+
+#[test]
+fn schema_rejects_v1_manifest_with_attestation() {
+    let schema = load_schema();
+    let compiled = JSONSchema::compile(&schema).expect("compile schema");
+    let mut manifest = minimal_manifest();
+    manifest.signer.attestation = Some(SignerAttestation {
+        format: "apple-sep-v1".to_string(),
+        payload_b64: "QUFFQg==".to_string(),
+        certificate_chain_b64: None,
+    });
+    let payload = serde_json::to_value(&manifest).expect("serialize manifest");
+    assert!(
+        compiled.validate(&payload).is_err(),
+        "v1 manifests must reject signer.attestation; the field is a v2-only addition"
+    );
+}
+
+#[test]
+fn schema_rejects_manifest_with_unknown_version() {
+    let schema = load_schema();
+    let compiled = JSONSchema::compile(&schema).expect("compile schema");
+    let mut payload = serde_json::to_value(minimal_manifest()).expect("serialize manifest");
+    payload["manifest_version"] = serde_json::json!(99);
+    assert!(
+        compiled.validate(&payload).is_err(),
+        "schema must reject manifest_version values outside the enum [1, 2]"
+    );
+}
+
+#[test]
+fn schema_rejects_v2_manifest_with_unknown_algorithm() {
+    let schema = load_schema();
+    let compiled = JSONSchema::compile(&schema).expect("compile schema");
+    let mut manifest = minimal_manifest();
+    manifest.signer.algorithm = "future-pq-sig".to_string();
+    let mut payload = serde_json::to_value(&manifest).expect("serialize manifest");
+    payload["manifest_version"] = serde_json::json!(2);
+    assert!(
+        compiled.validate(&payload).is_err(),
+        "schema must reject signer.algorithm values outside the enum [ed25519, ecdsa-p256]"
     );
 }

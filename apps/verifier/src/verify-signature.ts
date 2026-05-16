@@ -4,8 +4,29 @@ import type { Manifest, SignatureDocument, CheckOutcome } from "./types";
 import { canonicalizeManifest } from "./canonicalize-manifest";
 import { parsePublicKeyPem } from "./parse-public-key";
 
+const ALGORITHM_ED25519 = "ed25519";
+const ALGORITHM_ECDSA_P256 = "ecdsa-p256";
+
+/** Algorithms each manifest version may declare in `signer.algorithm` and
+ *  `signature.algorithm`. The per-version restriction prevents a v1 verifier
+ *  from being asked to render a field shape it does not understand. */
+function algorithmsPermittedForVersion(version: number): readonly string[] {
+  switch (version) {
+    case 1:
+      return [ALGORITHM_ED25519];
+    case 2:
+      return [ALGORITHM_ED25519, ALGORITHM_ECDSA_P256];
+    default:
+      return [];
+  }
+}
+
 /**
- * Verify the Ed25519 signature over the canonicalized manifest.
+ * Verify the manifest signature against the embedded public key, routing
+ * by `signer.algorithm`. v1 manifests are restricted to Ed25519; v2 may
+ * additionally use ECDSA P-256. This build only ships the Ed25519 backend,
+ * so a v2 manifest declaring `ecdsa-p256` fails the row with a clear
+ * "not yet implemented" detail rather than misverifying.
  *
  * @param manifest - Parsed manifest object.
  * @param sigDoc - Parsed signature document from the bundle.
@@ -17,16 +38,28 @@ export async function verifySignature(
 ): Promise<CheckOutcome> {
   const details: string[] = [];
 
-  if (sigDoc.algorithm !== "ed25519") {
+  const permitted = algorithmsPermittedForVersion(manifest.manifest_version);
+  if (!permitted.includes(sigDoc.algorithm)) {
     details.push(
-      `unsupported signature algorithm "${sigDoc.algorithm}"; expected "ed25519". only Ed25519 bundles are supported by this verifier version.`,
+      `signature.algorithm is "${sigDoc.algorithm}"; manifest_version ${manifest.manifest_version} permits only ${JSON.stringify(permitted)}. the bundle may be malformed or produced by a verifier-incompatible capture app.`,
     );
     return { name: "Signature valid", passed: false, details };
   }
-
-  if (manifest.signer.algorithm !== "ed25519") {
+  if (!permitted.includes(manifest.signer.algorithm)) {
     details.push(
-      `unsupported manifest.signer.algorithm "${manifest.signer.algorithm}"; expected "ed25519". only Ed25519 bundles are supported by this verifier version.`,
+      `manifest.signer.algorithm is "${manifest.signer.algorithm}"; manifest_version ${manifest.manifest_version} permits only ${JSON.stringify(permitted)}. the bundle may be malformed or produced by a verifier-incompatible capture app.`,
+    );
+    return { name: "Signature valid", passed: false, details };
+  }
+  if (sigDoc.algorithm !== manifest.signer.algorithm) {
+    details.push(
+      `signature.algorithm "${sigDoc.algorithm}" does not match manifest.signer.algorithm "${manifest.signer.algorithm}". the two must agree; a mismatch indicates the signature was copied from a different bundle.`,
+    );
+    return { name: "Signature valid", passed: false, details };
+  }
+  if (manifest.manifest_version === 1 && manifest.signer.attestation !== undefined) {
+    details.push(
+      "manifest.signer.attestation is present on a v1 manifest. the attestation blob is a v2-only field; a v1 bundle that carries it is malformed.",
     );
     return { name: "Signature valid", passed: false, details };
   }
@@ -63,13 +96,40 @@ export async function verifySignature(
     return { name: "Signature valid", passed: false, details };
   }
 
-  if (signatureBytes.length !== 64) {
+  if (sigDoc.key_id !== manifest.signer.key_id) {
     details.push(
-      `signature was ${signatureBytes.length} bytes; expected 64. the bundle may be malformed or the signature truncated.`,
+      `signature key_id "${sigDoc.key_id}" does not match manifest signer.key_id "${manifest.signer.key_id}". the signature may have been copied from a different bundle.`,
     );
     return { name: "Signature valid", passed: false, details };
   }
 
+  if (manifest.signer.algorithm === ALGORITHM_ED25519) {
+    return await verifyEd25519(manifest, signatureBytes, canonical, details);
+  }
+  if (manifest.signer.algorithm === ALGORITHM_ECDSA_P256) {
+    details.push(
+      'manifest.signer.algorithm is "ecdsa-p256"; this verifier build was compiled without the ECDSA P-256 backend. install a newer verifier to validate this bundle.',
+    );
+    return { name: "Signature valid", passed: false, details };
+  }
+  details.push(
+    `manifest.signer.algorithm "${manifest.signer.algorithm}" reached signature dispatch but no backend matches. this is a verifier bug; report it.`,
+  );
+  return { name: "Signature valid", passed: false, details };
+}
+
+async function verifyEd25519(
+  manifest: Manifest,
+  signatureBytes: Uint8Array,
+  canonical: Uint8Array,
+  details: string[],
+): Promise<CheckOutcome> {
+  if (signatureBytes.length !== 64) {
+    details.push(
+      `Ed25519 signature was ${signatureBytes.length} bytes; expected 64. the bundle may be malformed or the signature truncated.`,
+    );
+    return { name: "Signature valid", passed: false, details };
+  }
   let publicKeyBytes: Uint8Array;
   try {
     publicKeyBytes = parsePublicKeyPem(manifest.signer.public_key_pem);
@@ -78,7 +138,6 @@ export async function verifySignature(
     details.push(`public key PEM parsing failed: ${message}`);
     return { name: "Signature valid", passed: false, details };
   }
-
   const valid = await verifyAsync(signatureBytes, canonical, publicKeyBytes);
   if (!valid) {
     details.push(
@@ -86,14 +145,6 @@ export async function verifySignature(
     );
     return { name: "Signature valid", passed: false, details };
   }
-
-  if (sigDoc.key_id !== manifest.signer.key_id) {
-    details.push(
-      `signature key_id "${sigDoc.key_id}" does not match manifest signer.key_id "${manifest.signer.key_id}". the signature may have been copied from a different bundle.`,
-    );
-    return { name: "Signature valid", passed: false, details };
-  }
-
   return { name: "Signature valid", passed: true, details };
 }
 

@@ -97,6 +97,20 @@ export interface SignerInfo {
   algorithm: string;
   public_key_pem: string;
   key_id: string;
+  /** Hardware-key attestation blob. v2+ manifests only. */
+  attestation?: SignerAttestation;
+}
+
+/** Hardware-key attestation blob carried by v2 manifests. Informational at
+ *  this verifier version; the manifest signature is the cryptographic
+ *  guarantee. */
+export interface SignerAttestation {
+  /** Identifier of the attestation document format, e.g. "apple-sep-v1". */
+  format: string;
+  /** Base64-encoded attestation payload bytes. Opaque to the verifier core. */
+  payload_b64: string;
+  /** Optional base64-encoded DER X.509 chain rooting the attestation. */
+  certificate_chain_b64?: string[];
 }
 
 /** Detached signature document inside the bundle. */

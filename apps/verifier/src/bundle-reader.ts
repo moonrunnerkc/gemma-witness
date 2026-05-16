@@ -171,6 +171,43 @@ function requireString(
   return value;
 }
 
+function validateSignerAttestation(
+  signer: Record<string, unknown>,
+  manifestVersion: number,
+): void {
+  const attestation = signer.attestation;
+  if (attestation === undefined) {
+    return;
+  }
+  if (manifestVersion === 1) {
+    throw new Error(
+      "manifest.signer.attestation is present on a v1 manifest. the attestation blob is a v2-only field; a v1 bundle that carries it is malformed.",
+    );
+  }
+  if (!isStringRecord(attestation)) {
+    throw new Error(
+      "manifest.signer.attestation is present but is not an object.",
+    );
+  }
+  requireString(attestation, "signer.attestation", "format");
+  requireString(attestation, "signer.attestation", "payload_b64");
+  const chain = attestation.certificate_chain_b64;
+  if (chain !== undefined) {
+    if (!Array.isArray(chain)) {
+      throw new Error(
+        "manifest.signer.attestation.certificate_chain_b64 is present but is not an array.",
+      );
+    }
+    for (const [i, item] of chain.entries()) {
+      if (typeof item !== "string" || item.length === 0) {
+        throw new Error(
+          `manifest.signer.attestation.certificate_chain_b64[${i}] is not a non-empty string.`,
+        );
+      }
+    }
+  }
+}
+
 function requireNumber(
   parent: Record<string, unknown>,
   parentName: string,
@@ -215,7 +252,7 @@ export function validateManifest(parsed: unknown): Manifest {
   if (!isStringRecord(parsed)) {
     throw new Error("manifest.json is not a JSON object.");
   }
-  requireNumber(parsed, "", "manifest_version");
+  const manifestVersion = requireNumber(parsed, "", "manifest_version");
   requireString(parsed, "", "bundle_id");
   requireString(parsed, "", "created_at");
 
@@ -223,6 +260,7 @@ export function validateManifest(parsed: unknown): Manifest {
   requireString(signer, "signer", "algorithm");
   requireString(signer, "signer", "public_key_pem");
   requireString(signer, "signer", "key_id");
+  validateSignerAttestation(signer, manifestVersion);
 
   const assets = parsed.assets;
   if (!Array.isArray(assets)) {
