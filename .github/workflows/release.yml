@@ -15,6 +15,15 @@ permissions:
   attestations: write
 
 jobs:
+  fingerprint-registry-signed:
+    # Precondition: the inference/fingerprints/ registry envelope must be
+    # currently signed by the keyless cosign identity that owns this
+    # workflow. A tag pushed against an out-of-date or unsigned envelope
+    # is rejected here.
+    name: fingerprint registry signed
+    uses: ./.github/workflows/sign-fingerprints.yml
+    secrets: inherit
+
   live-e2e:
     # Precondition: the live e2e against real Gemma 4 sidecars (mlx-vlm on
     # Apple Silicon, transformers on Linux) must pass before any release
@@ -25,7 +34,7 @@ jobs:
     secrets: inherit
 
   build-artifacts:
-    needs: [live-e2e]
+    needs: [fingerprint-registry-signed, live-e2e]
     name: build (${{ matrix.os }})
     strategy:
       fail-fast: false
