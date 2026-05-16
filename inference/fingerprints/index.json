@@ -1,11 +1,16 @@
 {
-  "schema_version": 1,
   "description": "Registry mapping (model_id, revision) to known-good safetensors hashes. Entries are added by tools/seed-fingerprints, which verifies each hash against the Hugging Face LFS oid for the same revision before writing.",
   "entries": [
     {
+      "file": "mlx-community__gemma-4-e4b-it-4bit__cc3b666c.json",
       "model_id": "mlx-community/gemma-4-e4b-it-4bit",
-      "revision": "cc3b666c01c20395e0dcebd53854504c7d9821f9",
-      "file": "mlx-community__gemma-4-e4b-it-4bit__cc3b666c.json"
+      "revision": "cc3b666c01c20395e0dcebd53854504c7d9821f9"
+    },
+    {
+      "file": "google__gemma-4-E4B-it__3555bddc.json",
+      "model_id": "google/gemma-4-E4B-it",
+      "revision": "3555bddc93a623db8887dd2e52123facc45ade77"
     }
-  ]
+  ],
+  "schema_version": 1
 }

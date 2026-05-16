@@ -1,0 +1,19 @@
+{
+  "model_id": "google/gemma-4-E4B-it",
+  "revision": "3555bddc93a623db8887dd2e52123facc45ade77",
+  "format": "safetensors",
+  "primary_file": "model.safetensors",
+  "files": [
+    {
+      "path": "model.safetensors",
+      "sha256": "cfbd3d2f1cd71bd471c37fe2bf8546d5028d41e5736f64e1ca6c6b8893125503",
+      "bytes": 15992595884
+    }
+  ],
+  "source_url": "https://huggingface.co/google/gemma-4-E4B-it/tree/3555bddc93a623db8887dd2e52123facc45ade77",
+  "lfs_oid": "cfbd3d2f1cd71bd471c37fe2bf8546d5028d41e5736f64e1ca6c6b8893125503",
+  "captured_at_utc": "2026-05-16T02:43:48Z",
+  "verified_by": "huggingface-lfs+local-recompute",
+  "verified_at_utc": "2026-05-16T02:43:48Z",
+  "note": "Seeded by tools/seed-fingerprints. HF LFS oid was cross-checked against the locally recomputed sha256 of model.safetensors before writing."
+}
