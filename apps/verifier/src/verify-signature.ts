@@ -1,8 +1,10 @@
 import { verifyAsync } from "@noble/ed25519";
+import { p256 } from "@noble/curves/nist.js";
 
 import type { Manifest, SignatureDocument, CheckOutcome } from "./types";
 import { canonicalizeManifest } from "./canonicalize-manifest";
 import { parsePublicKeyPem } from "./parse-public-key";
+import { parsePublicKeyPemP256 } from "./parse-public-key-p256";
 
 const ALGORITHM_ED25519 = "ed25519";
 const ALGORITHM_ECDSA_P256 = "ecdsa-p256";
@@ -107,15 +109,47 @@ export async function verifySignature(
     return await verifyEd25519(manifest, signatureBytes, canonical, details);
   }
   if (manifest.signer.algorithm === ALGORITHM_ECDSA_P256) {
-    details.push(
-      'manifest.signer.algorithm is "ecdsa-p256"; this verifier build was compiled without the ECDSA P-256 backend. install a newer verifier to validate this bundle.',
-    );
-    return { name: "Signature valid", passed: false, details };
+    return verifyEcdsaP256(manifest, signatureBytes, canonical, details);
   }
   details.push(
     `manifest.signer.algorithm "${manifest.signer.algorithm}" reached signature dispatch but no backend matches. this is a verifier bug; report it.`,
   );
   return { name: "Signature valid", passed: false, details };
+}
+
+function verifyEcdsaP256(
+  manifest: Manifest,
+  signatureBytes: Uint8Array,
+  canonical: Uint8Array,
+  details: string[],
+): CheckOutcome {
+  let publicKeyBytes: Uint8Array;
+  try {
+    publicKeyBytes = parsePublicKeyPemP256(manifest.signer.public_key_pem);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    details.push(`public key PEM parsing failed: ${message}`);
+    return { name: "Signature valid", passed: false, details };
+  }
+  let valid: boolean;
+  try {
+    valid = p256.verify(signatureBytes, canonical, publicKeyBytes, {
+      format: "der",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    details.push(
+      `ECDSA P-256 signature decoding failed: ${message}. the signature must be ASN.1/DER-encoded over a SHA-256 digest of the canonicalized manifest.`,
+    );
+    return { name: "Signature valid", passed: false, details };
+  }
+  if (!valid) {
+    details.push(
+      "signature does not verify against the embedded public key. the manifest was modified after signing, or the signature belongs to a different key.",
+    );
+    return { name: "Signature valid", passed: false, details };
+  }
+  return { name: "Signature valid", passed: true, details };
 }
 
 async function verifyEd25519(

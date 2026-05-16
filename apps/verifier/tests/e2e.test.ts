@@ -17,6 +17,8 @@ import type {
   RegistryVerification,
 } from "../src/types";
 import { sha256 } from "@noble/hashes/sha2";
+import { p256 } from "@noble/curves/nist.js";
+import canonicalizeJson from "canonicalize";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -97,6 +99,72 @@ function bytesToHex(bytes: Uint8Array): string {
     out += bytes[i].toString(16).padStart(2, "0");
   }
   return out;
+}
+
+/** SPKI DER prefix for an ECDSA P-256 public key, terminated at the SEC1
+ *  uncompressed marker (0x04). Append 64 raw X||Y bytes to reach 91 total. */
+const P256_SPKI_PREFIX = new Uint8Array([
+  0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01,
+  0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00,
+]);
+
+function encodeP256Spki(uncompressedPoint: Uint8Array): string {
+  if (uncompressedPoint.length !== 65 || uncompressedPoint[0] !== 0x04) {
+    throw new Error(
+      `expected a 65-byte SEC1 uncompressed point (leading 0x04); got ${uncompressedPoint.length} bytes`,
+    );
+  }
+  const der = new Uint8Array(P256_SPKI_PREFIX.length + uncompressedPoint.length);
+  der.set(P256_SPKI_PREFIX, 0);
+  der.set(uncompressedPoint, P256_SPKI_PREFIX.length);
+  const b64 = Buffer.from(der).toString("base64");
+  const lines = b64.match(/.{1,64}/g) ?? [b64];
+  return `-----BEGIN PUBLIC KEY-----\n${lines.join("\n")}\n-----END PUBLIC KEY-----\n`;
+}
+
+/** Re-sign the day-4 fixture as a v2 ECDSA P-256 bundle: replace the signer
+ *  with a fresh P-256 key, bump manifest_version, canonicalize, DER-sign, and
+ *  rewrite signature.json. Returns the materials a test needs to assemble the
+ *  bundle and a matching trusted-signers entry. */
+function reSignAsP256(): {
+  manifestText: string;
+  sigDocText: string;
+  keyId: string;
+  pem: string;
+} {
+  const secretKey = p256.utils.randomSecretKey();
+  const pointUncompressed = p256.getPublicKey(secretKey, false);
+  const pem = encodeP256Spki(pointUncompressed);
+  const keyId = bytesToHex(sha256(pointUncompressed));
+
+  const buf = fs.readFileSync(FIXTURE);
+  const entries = unzipSync(new Uint8Array(buf));
+  const manifest = JSON.parse(strFromU8(entries["manifest.json"]));
+  manifest.manifest_version = 2;
+  manifest.signer = {
+    algorithm: "ecdsa-p256",
+    public_key_pem: pem,
+    key_id: keyId,
+  };
+  const canonical = canonicalizeJson(manifest);
+  if (canonical === undefined) {
+    throw new Error("canonicalize returned undefined");
+  }
+  const canonicalBytes = new TextEncoder().encode(canonical);
+  const signature = p256.sign(canonicalBytes, secretKey, { format: "der" });
+  const signatureBytes: Uint8Array = signature as unknown as Uint8Array;
+  const sigDoc = {
+    algorithm: "ecdsa-p256",
+    key_id: keyId,
+    signature_b64: Buffer.from(signatureBytes).toString("base64"),
+    signed_payload: "manifest.json",
+    canonicalization: "rfc8785",
+  };
+  const sigDocText = canonicalizeJson(sigDoc);
+  if (sigDocText === undefined) {
+    throw new Error("canonicalize sigDoc returned undefined");
+  }
+  return { manifestText: canonical, sigDocText, keyId, pem };
 }
 
 function toArrayBuffer(buf: Buffer): ArrayBuffer {
@@ -472,10 +540,11 @@ async function runTests(): Promise<void> {
     console.log("PASS T12");
   }
 
-  // T13 (WS3-1): A v2 manifest declaring "ecdsa-p256" fails the signature row
-  // with a clear "not yet implemented" message rather than panicking or
-  // misverifying. The ECDSA P-256 backend lands in a follow-up.
-  console.log("--- T13 (negative): v2 + ecdsa-p256 fails with a clear 'not implemented' message");
+  // T13 (WS3-3): A bundle that claims signer.algorithm=ecdsa-p256 but ships an
+  // Ed25519 SPKI PEM under it fails the signature row at PEM parsing. The
+  // P-256 dispatch is wired; the failure is now a shape-mismatch detail
+  // rather than a "backend not in this build" message.
+  console.log("--- T13 (negative): v2 + ecdsa-p256 over an Ed25519 PEM fails PEM parsing");
   {
     const mutated = mutateBundle((entries) => {
       const raw = entries.get("manifest.json")!;
@@ -499,10 +568,40 @@ async function runTests(): Promise<void> {
     const sigRow = rowByName(outcome, "Signature valid");
     assert(!sigRow.passed, "T13: signature row should fail");
     assert(
-      sigRow.details.some((d) => d.includes("ecdsa-p256") && d.includes("ECDSA P-256 backend")),
-      `T13: detail must name the missing P-256 backend; got ${JSON.stringify(sigRow.details)}`,
+      sigRow.details.some((d) => d.includes("public key PEM parsing failed")),
+      `T13: detail must surface the P-256 PEM parsing failure; got ${JSON.stringify(sigRow.details)}`,
     );
     console.log("PASS T13");
+  }
+
+  // T13b (WS3-3): A bundle re-signed with a real P-256 software key
+  // round-trips through the JS verifier. The signature row passes.
+  console.log("--- T13b (positive): v2 + ecdsa-p256 signature verifies under @noble/curves p256");
+  {
+    const { manifestText: newManifestText, sigDocText, keyId, pem } = reSignAsP256();
+    const mutated = mutateBundle((entries) => {
+      entries.set("manifest.json", new TextEncoder().encode(newManifestText));
+      entries.set("signature.json", new TextEncoder().encode(sigDocText));
+    });
+    const trusted: TrustedSigners = {
+      schema_version: 1,
+      signers: [
+        {
+          key_id: keyId,
+          public_key_pem_sha256: bytesToHex(sha256(new TextEncoder().encode(pem))),
+          label: "test P-256 signer",
+          added_at: "2026-05-15T00:00:00Z",
+          note: "ephemeral P-256 key synthesized at test time",
+        },
+      ],
+    };
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trusted, REGISTRY_VERIFIED);
+    const sigRow = rowByName(outcome, "Signature valid");
+    assert(
+      sigRow.passed,
+      `T13b: signature row should pass for a real P-256-signed bundle; got ${JSON.stringify(sigRow.details)}`,
+    );
+    console.log("PASS T13b");
   }
 
   // T14 (WS3-1): A v1 manifest carrying signer.attestation is rejected at the
