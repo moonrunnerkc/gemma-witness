@@ -150,7 +150,19 @@ jobs:
         # cargo-audit reads Cargo.lock directly and does not accept --locked.
         # The lockfile is the source of truth; cargo audit fails closed on any
         # advisory match.
-        run: cargo audit
+        #
+        # The four --ignore flags below match the entries in
+        # deny.toml's advisories.ignore block: rustls-webpki 0.102.8 cert
+        # validation issues, pulled in transitively by sigstore-verify
+        # 0.7.0. Build-time usage only; no attacker certificate reaches
+        # the parser in any production path. Remove once sigstore-verify
+        # cuts a release that pins rustls-webpki >= 0.103.13.
+        run: |
+          cargo audit \
+            --ignore RUSTSEC-2026-0049 \
+            --ignore RUSTSEC-2026-0098 \
+            --ignore RUSTSEC-2026-0099 \
+            --ignore RUSTSEC-2026-0104
 
       - name: cargo deny
         run: cargo deny --locked check advisories bans sources
