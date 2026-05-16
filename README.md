@@ -34,13 +34,13 @@ A week later, an editor on another continent opens a single static HTML page in 
 
 - the signature comes from the reporter's device
 - the audio and the photos have not been altered by a single byte
-- the AI model in the chain is the published Gemma model she named, not a substitute trained to mislead
+- the AI model in the chain is bit-for-bit the published Gemma model her manifest names, by `model_id`, `revision`, and `model.safetensors` SHA-256
 
 In plain language: the file in the editor's hands was made by the reporter and nobody else. Not one byte of the recording or the photos has changed since she sealed it. The AI in the chain is the model the manifest says it is, full stop. That property has a name. Archivists call it provenance. Lawyers call it chain of custody. It is the same idea: a verifiable answer to who made this, and what has happened to it since.
 
 Gemma 4 is not a black box in the corner of this picture. The manifest names the exact release by id, by revision, and by file hash, so the model is a fingerprinted participant in the chain rather than an unaudited ingredient. We chose Gemma 4 for three reasons. It runs fully on the reporter's device, so the model itself is not a leak surface. Its native multimodal capability lets one model own the audio, the images, and the reasoning, so the manifest pins one identity instead of three. The 4-bit E4B variant is small enough to run on a journalist's laptop in the field.
 
-Gemma.Witness leaves the file openly readable. What it proves is who made it, that nothing has changed since, and that the AI involved has not been substituted.
+Gemma.Witness leaves the file openly readable. What it proves is who made it, that nothing has changed since, and that the AI involved was the model whose published bytes match the fingerprint in the manifest. What a verifier can read on the file's behalf is bounded by what the signature actually covers; the [threat model](#threat-model) section names the boundary.
 
 No server saw any of it. No account was created, no file uploaded, no metadata left behind on a platform that could later be served a subpoena or a takedown notice.
 
@@ -387,6 +387,18 @@ The chain runs from the moment of capture to the moment a third party reads the 
 Defends against: post-capture tampering of any asset (a flipped byte fails the named asset-hash check), substitution of the model that produced the reasoning (the manifest pins `model_id`, `revision`, and `model.safetensors` SHA-256 inside the signature scope), forgery of the manifest itself (JCS-canonicalized bytes signed with a device Ed25519 key that never leaves the OS keychain), accidental re-encoding or byte truncation during transport (asset checks fail), bundles produced by an unknown model (fingerprint membership check fails), signature forgery without the device key (infeasible under Ed25519).
 
 Does not defend against: a coerced reporter signing a falsified narrative, a device compromised before sealing, a tampered camera or microphone upstream of the file system, social engineering of the verifier's known-fingerprint list, or traffic analysis of who produced bundles when. The bundle says what the device with this key sealed at this time using this model. It does not say what actually happened.
+
+## How this compares to C2PA
+
+C2PA, the Coalition for Content Provenance and Authenticity, publishes the Content Credentials standard that Adobe, Microsoft, the BBC, the New York Times, and others have aligned on for cryptographic media provenance. C2PA defines a manifest format, an assertion vocabulary, signing rules, and trust-list semantics for images, audio, video, and documents. Gemma.Witness uses the same cryptographic building blocks (SHA-256, public-key signatures over a JSON manifest, content-binding via digest) and differs in three specific ways:
+
+1. **Sealed reasoning trace.** C2PA has assertions for naming that AI was involved (`c2pa.training-mining`, `c2pa.ai-generated`) but does not bind the model's actual output. Gemma.Witness seals the AI's thinking-channel bytes verbatim into the signature scope, so a verifier can read the chain-of-thought that produced the structured incident report and judge whether the conclusion follows from the input.
+
+2. **Multi-asset incident bundles.** C2PA's assertion model is per-asset: one image carries its own manifest, one video carries its own. Gemma.Witness's manifest covers an entire incident (one audio file plus N images plus the reasoning trace plus the structured report) in one signed envelope, so the cross-modal consistency claim ("the audio narration matches the photographs") is itself a signed assertion rather than an out-of-band judgment.
+
+3. **Zero-network verifier.** C2PA verifiers commonly fetch trust lists or revocation information at verification time. Gemma.Witness's verifier is a single HTML file that CI-enforces no `fetch`, `XMLHttpRequest`, or `importScripts` call. Trust transfers via the file the reader already has open; no server, no account, no telemetry footprint.
+
+Neither system defends against a coerced reporter, a pre-compromised device, or tampering of the microphone or camera upstream of the file system. Pick the one whose threat model fits the use case; the deep-dive comparison and citations to the C2PA v2.x spec live in [`docs/comparison-with-c2pa.md`](docs/comparison-with-c2pa.md).
 
 ## Current limitations
 
