@@ -52,20 +52,49 @@ fn artifacts_dir() -> PathBuf {
     workspace_root().join("target/test-artifacts")
 }
 
+/// Pick the registry entry to seal against.
+///
+/// The test runs against whichever sidecar is reachable on
+/// `DEFAULT_ENDPOINT`. On Apple Silicon that is the mlx-vlm sidecar
+/// serving `mlx-community/gemma-4-e4b-it-4bit`; in the live-e2e Linux
+/// job that is the transformers sidecar serving `google/gemma-4-E4B-it`.
+/// Both have entries in `inference/fingerprints/`. The caller can pin
+/// a specific entry via `WITNESS_FINGERPRINT_ENTRY` (filename only); the
+/// default is the mlx entry so the Apple Silicon invocation does not
+/// regress.
 fn known_fingerprint_from_spec() -> ModelFingerprint {
-    // Reads from the unified fingerprint registry rather than the per-sidecar
-    // JSON. The registry now lives at inference/fingerprints/, and the seeded
-    // mlx-community entry has been pinned to the same revision since Day 4.
-    let raw = std::fs::read_to_string(
-        workspace_root()
-            .join("inference/fingerprints/mlx-community__gemma-4-e4b-it-4bit__cc3b666c.json"),
-    )
-    .expect("registry entry for the mlx-community model must exist");
+    let entry_file = std::env::var("WITNESS_FINGERPRINT_ENTRY").unwrap_or_else(|_| {
+        "mlx-community__gemma-4-e4b-it-4bit__cc3b666c.json".to_string()
+    });
+    let path = workspace_root().join("inference/fingerprints").join(&entry_file);
+    let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        panic!(
+            "registry entry not readable at {}: {err}. set WITNESS_FINGERPRINT_ENTRY to the correct filename under inference/fingerprints/.",
+            path.display()
+        )
+    });
     let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    let primary_file = parsed["primary_file"]
+        .as_str()
+        .unwrap_or("model.safetensors");
+    let sha256 = parsed["files"]
+        .as_array()
+        .and_then(|files| {
+            files
+                .iter()
+                .find(|f| f["path"].as_str() == Some(primary_file))
+                .and_then(|f| f["sha256"].as_str())
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "registry entry {} has no files[] row matching primary_file={primary_file:?}",
+                path.display()
+            )
+        });
     ModelFingerprint {
         model_id: parsed["model_id"].as_str().unwrap().to_string(),
         revision: parsed["revision"].as_str().unwrap().to_string(),
-        sha256: parsed["files"][0]["sha256"].as_str().unwrap().to_string(),
+        sha256: sha256.to_string(),
     }
 }
 
