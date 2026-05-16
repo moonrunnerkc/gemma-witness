@@ -71,11 +71,17 @@ pub struct BundleInputs {
     pub pinned_image_sha256s: Option<Vec<String>>,
 }
 
-/// A signer is anything that can produce a 64-byte Ed25519 signature over a
-/// payload. The capture app passes the keystore-backed implementation; tests
-/// can pass an in-memory signing key.
+/// A signer is anything that can produce a signature over a payload and
+/// report which algorithm it speaks. The capture app passes the keystore-
+/// backed implementation; tests can pass an in-memory signing key.
+///
+/// Signatures are variable-length to accommodate ECDSA P-256's ASN.1/DER
+/// encoding (typically 70 to 72 bytes) alongside Ed25519's fixed 64-byte
+/// raw form. The bundle builder uses `algorithm()` to decide the
+/// `signer.algorithm` wire string and the minimum `manifest_version`.
 pub trait BundleSigner {
-    fn sign(&self, payload: &[u8]) -> Result<[u8; 64], WitnessCoreError>;
+    fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, WitnessCoreError>;
+    fn algorithm(&self) -> crate::key_provider::SigningAlgorithm;
 }
 
 /// Build, sign, and write a `.witness` bundle to `out_path`.
@@ -176,12 +182,18 @@ pub fn build_and_seal_bundle<S: BundleSigner>(
     });
 
     let bundle_id = uuid::Uuid::new_v4().to_string();
+    let signer_algorithm = signer.algorithm();
+    // v1 bundles are Ed25519-only. Any non-Ed25519 algorithm forces v2 so
+    // the wire form passes the schema's per-version algorithm gate; if a
+    // future algorithm needs v3, bump its `minimum_manifest_version`.
+    let manifest_version =
+        MANIFEST_VERSION.max(signer_algorithm.minimum_manifest_version());
     let manifest = Manifest {
-        manifest_version: MANIFEST_VERSION,
+        manifest_version,
         bundle_id: bundle_id.clone(),
         created_at: Utc::now().to_rfc3339(),
         signer: SignerInfo {
-            algorithm: "ed25519".to_string(),
+            algorithm: signer_algorithm.as_str().to_string(),
             public_key_pem: inputs.signer_public_key_pem.clone(),
             key_id: inputs.signer_key_id.clone(),
             attestation: None,
@@ -205,9 +217,9 @@ pub fn build_and_seal_bundle<S: BundleSigner>(
 
     let manifest_bytes = canonicalize(&manifest)?;
     let signature = signer.sign(&manifest_bytes)?;
-    let signature_b64 = base64::engine::general_purpose::STANDARD.encode(signature);
+    let signature_b64 = base64::engine::general_purpose::STANDARD.encode(&signature);
     let signature_doc = SignatureDocument {
-        algorithm: "ed25519".to_string(),
+        algorithm: signer_algorithm.as_str().to_string(),
         key_id: inputs.signer_key_id.clone(),
         signature_b64,
         signed_payload: paths::MANIFEST.to_string(),

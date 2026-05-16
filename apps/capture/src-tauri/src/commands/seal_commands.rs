@@ -6,7 +6,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, State};
 use witness_core::bundle_builder::{build_and_seal_bundle, BundleInputs, BundleSigner};
-use witness_core::key_provider::{KeyProvider, SoftwareEd25519Provider};
+use witness_core::key_provider::{KeyProvider, SigningAlgorithm, SoftwareEd25519Provider};
 use witness_core::manifest::{
     CaptureEnvironment, ConsistencyLabel, ConsistencyVerdict, ModelFingerprint,
 };
@@ -31,29 +31,21 @@ pub struct SealedBundle {
 }
 
 /// Adapter from the abstract [`KeyProvider`] trait to the bundle builder's
-/// fixed 64-byte signature contract. Today only Ed25519 implementations
-/// flow through; when a P-256 hardware backend lands, the builder will gain
-/// a variant for variable-length signatures and this adapter will pick the
-/// right path based on `provider.algorithm()`.
+/// signer contract. Variable-length signatures pass through unchanged so
+/// both Ed25519 (64 bytes raw) and ECDSA P-256 (DER, typically 70 to 72
+/// bytes) round-trip without further translation. The bundle builder
+/// reads `algorithm()` to decide the manifest's `signer.algorithm` wire
+/// string and the minimum `manifest_version`.
 struct KeyProviderSigner<P> {
     provider: P,
 }
 
 impl<P: KeyProvider> BundleSigner for KeyProviderSigner<P> {
-    fn sign(&self, payload: &[u8]) -> Result<[u8; 64], WitnessCoreError> {
-        let raw = self.provider.sign(payload)?;
-        if raw.len() != 64 {
-            return Err(WitnessCoreError::Keyring {
-                detail: format!(
-                    "key provider returned a {}-byte signature; the v1 manifest requires 64 (Ed25519). \
-                     a future provider may use a different algorithm; bump manifest_version when wiring it up.",
-                    raw.len()
-                ),
-            });
-        }
-        let mut sig = [0u8; 64];
-        sig.copy_from_slice(&raw);
-        Ok(sig)
+    fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, WitnessCoreError> {
+        self.provider.sign(payload)
+    }
+    fn algorithm(&self) -> SigningAlgorithm {
+        self.provider.algorithm()
     }
 }
 

@@ -37,6 +37,7 @@ sha2 = "0.10"
 hex = "0.4"
 base64 = "0.22"
 ed25519-dalek = { version = "2.1", features = ["pem", "rand_core"] }
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pem", "std", "pkcs8"] }
 rand = "0.8"
 rand_core = "0.6"
 serde_jcs = "0.1"

@@ -12,8 +12,10 @@ pub mod error;
 pub mod hashing;
 pub mod key_provider;
 pub mod keystore;
+pub mod keystore_p256;
 pub mod manifest;
 pub mod signing;
+pub mod signing_ecdsa;
 pub mod verifier;
 
 pub use assertions::audio_fingerprint::{

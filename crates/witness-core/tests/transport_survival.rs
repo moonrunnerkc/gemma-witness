@@ -35,8 +35,11 @@ struct EphemeralSigner {
 }
 
 impl BundleSigner for EphemeralSigner {
-    fn sign(&self, payload: &[u8]) -> Result<[u8; 64], WitnessCoreError> {
-        Ok(self.key.sign(payload).to_bytes())
+    fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, WitnessCoreError> {
+        Ok(self.key.sign(payload).to_bytes().to_vec())
+    }
+    fn algorithm(&self) -> witness_core::SigningAlgorithm {
+        witness_core::SigningAlgorithm::Ed25519
     }
 }
 

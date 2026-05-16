@@ -17,6 +17,7 @@ sha2.workspace = true
 hex.workspace = true
 base64.workspace = true
 ed25519-dalek.workspace = true
+p256.workspace = true
 serde_jcs.workspace = true
 zip.workspace = true
 keyring.workspace = true

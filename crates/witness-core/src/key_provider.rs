@@ -23,13 +23,21 @@ use ed25519_dalek::SigningKey;
 
 use crate::error::WitnessCoreError;
 use crate::keystore::load_or_create_signing_key;
+use crate::keystore_p256::load_or_create_signing_key as load_or_create_p256_signing_key;
 use crate::signing::{encode_public_key_pem, key_id, sign};
+use crate::signing_ecdsa;
 
 /// Wire-level signing algorithm. Mirrors `signer.algorithm` in the manifest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SigningAlgorithm {
-    /// PKCS#8 PEM Ed25519 public key, 64-byte signature.
+    /// PKCS#8 PEM Ed25519 public key, 64-byte raw signature. Permitted in
+    /// every manifest version.
     Ed25519,
+    /// SPKI PEM ECDSA P-256 public key, ASN.1/DER-encoded signature
+    /// (variable length, typically 70 to 72 bytes). Permitted from
+    /// `manifest_version >= 2`. Matches the curve and encoding that Apple
+    /// Secure Enclave, TPM 2.0, and Windows NCrypt produce natively.
+    EcdsaP256,
 }
 
 impl SigningAlgorithm {
@@ -38,6 +46,16 @@ impl SigningAlgorithm {
     pub fn as_str(&self) -> &'static str {
         match self {
             SigningAlgorithm::Ed25519 => "ed25519",
+            SigningAlgorithm::EcdsaP256 => "ecdsa-p256",
+        }
+    }
+
+    /// The lowest `manifest_version` that may carry a signer using this
+    /// algorithm. v1 manifests are Ed25519-only; v2 widens to P-256.
+    pub fn minimum_manifest_version(&self) -> u32 {
+        match self {
+            SigningAlgorithm::Ed25519 => 1,
+            SigningAlgorithm::EcdsaP256 => 2,
         }
     }
 }
@@ -128,6 +146,65 @@ impl KeyProvider for SoftwareEd25519Provider {
     }
 }
 
+/// Software-backed ECDSA P-256 provider.
+///
+/// Parallel to [`SoftwareEd25519Provider`]. The 32-byte private scalar lives
+/// in the OS keychain under a distinct service+account from the Ed25519
+/// entry, so the two providers can coexist on the same host. This provider
+/// is a stepping stone toward the hardware-backed P-256 providers (Secure
+/// Enclave, TPM 2.0, Windows NCrypt) that ship behind the `hardware-keys`
+/// feature. Use it for local development, CI, and tests; ship hardware.
+#[derive(Debug, Default)]
+pub struct SoftwareEcdsaP256Provider {
+    cached_key: Mutex<Option<p256::ecdsa::SigningKey>>,
+}
+
+impl SoftwareEcdsaP256Provider {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn with_key<T>(
+        &self,
+        f: impl FnOnce(&p256::ecdsa::SigningKey) -> Result<T, WitnessCoreError>,
+    ) -> Result<T, WitnessCoreError> {
+        let mut guard = self
+            .cached_key
+            .lock()
+            .map_err(|err| WitnessCoreError::Keyring {
+                detail: format!("P-256 device key cache lock poisoned: {err}"),
+            })?;
+        if guard.is_none() {
+            *guard = Some(load_or_create_p256_signing_key()?);
+        }
+        let key = guard.as_ref().ok_or_else(|| WitnessCoreError::Keyring {
+            detail: "P-256 device key cache was empty after load".to_string(),
+        })?;
+        f(key)
+    }
+}
+
+impl KeyProvider for SoftwareEcdsaP256Provider {
+    fn load_or_create_public(&self) -> Result<PublicKeyHandle, WitnessCoreError> {
+        self.with_key(|key| {
+            let verifying = key.verifying_key();
+            Ok(PublicKeyHandle {
+                algorithm: SigningAlgorithm::EcdsaP256,
+                public_key_pem: signing_ecdsa::encode_public_key_pem(verifying)?,
+                key_id: signing_ecdsa::key_id(verifying),
+            })
+        })
+    }
+
+    fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, WitnessCoreError> {
+        self.with_key(|key| Ok(signing_ecdsa::sign(key, payload)))
+    }
+
+    fn algorithm(&self) -> SigningAlgorithm {
+        SigningAlgorithm::EcdsaP256
+    }
+}
+
 /// Marker stub for the planned hardware-backed providers.
 ///
 /// Compilation under the `hardware-keys` feature is intentionally not yet
@@ -151,11 +228,24 @@ mod tests {
     #[test]
     fn signing_algorithm_wire_string_is_stable() {
         assert_eq!(SigningAlgorithm::Ed25519.as_str(), "ed25519");
+        assert_eq!(SigningAlgorithm::EcdsaP256.as_str(), "ecdsa-p256");
+    }
+
+    #[test]
+    fn signing_algorithm_minimum_manifest_version_matches_spec() {
+        assert_eq!(SigningAlgorithm::Ed25519.minimum_manifest_version(), 1);
+        assert_eq!(SigningAlgorithm::EcdsaP256.minimum_manifest_version(), 2);
     }
 
     #[test]
     fn software_provider_reports_ed25519() {
         let provider = SoftwareEd25519Provider::new();
         assert_eq!(provider.algorithm(), SigningAlgorithm::Ed25519);
+    }
+
+    #[test]
+    fn software_p256_provider_reports_ecdsa_p256() {
+        let provider = SoftwareEcdsaP256Provider::new();
+        assert_eq!(provider.algorithm(), SigningAlgorithm::EcdsaP256);
     }
 }

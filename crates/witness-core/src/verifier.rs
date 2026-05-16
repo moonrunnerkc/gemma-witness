@@ -17,6 +17,7 @@ use crate::error::WitnessCoreError;
 use crate::hashing::hash_bytes_hex;
 use crate::manifest::{Manifest, SignatureDocument};
 use crate::signing::verify_pem;
+use crate::signing_ecdsa::verify_pem as verify_pem_ecdsa_p256;
 
 /// One known-good model fingerprint accepted by the verifier.
 ///
@@ -338,12 +339,12 @@ fn check_signature(
             &signature_bytes,
             details,
         ),
-        ALGORITHM_ECDSA_P256 => {
-            details.push(
-                "manifest.signer.algorithm is \"ecdsa-p256\"; this verifier build was compiled without the ECDSA P-256 backend. install a newer verifier to validate this bundle.".to_string(),
-            );
-            false
-        }
+        ALGORITHM_ECDSA_P256 => verify_ecdsa_p256(
+            &manifest.signer.public_key_pem,
+            &canonical,
+            &signature_bytes,
+            details,
+        ),
         other => {
             details.push(format!(
                 "manifest.signer.algorithm \"{other}\" reached signature dispatch but no backend matches. this is a verifier bug; report it."
@@ -369,6 +370,21 @@ fn verify_ed25519(
     let mut sig_array = [0u8; 64];
     sig_array.copy_from_slice(signature_bytes);
     match verify_pem(public_key_pem, canonical_manifest, &sig_array) {
+        Ok(()) => true,
+        Err(err) => {
+            details.push(format!("signature did not verify: {err}"));
+            false
+        }
+    }
+}
+
+fn verify_ecdsa_p256(
+    public_key_pem: &str,
+    canonical_manifest: &[u8],
+    signature_bytes: &[u8],
+    details: &mut Vec<String>,
+) -> bool {
+    match verify_pem_ecdsa_p256(public_key_pem, canonical_manifest, signature_bytes) {
         Ok(()) => true,
         Err(err) => {
             details.push(format!("signature did not verify: {err}"));

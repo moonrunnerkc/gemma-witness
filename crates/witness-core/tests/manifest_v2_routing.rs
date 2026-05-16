@@ -36,8 +36,11 @@ struct EphemeralSigner {
 }
 
 impl BundleSigner for EphemeralSigner {
-    fn sign(&self, payload: &[u8]) -> Result<[u8; 64], WitnessCoreError> {
-        Ok(self.key.sign(payload).to_bytes())
+    fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, WitnessCoreError> {
+        Ok(self.key.sign(payload).to_bytes().to_vec())
+    }
+    fn algorithm(&self) -> witness_core::SigningAlgorithm {
+        witness_core::SigningAlgorithm::Ed25519
     }
 }
 
@@ -179,9 +182,13 @@ fn v2_bundle_with_ed25519_and_attestation_verifies() {
 }
 
 #[test]
-fn v2_bundle_declaring_ecdsa_p256_fails_with_not_yet_implemented() {
+fn v2_bundle_with_algorithm_lie_fails_signature_verification() {
+    // A bundle that claims signer.algorithm=ecdsa-p256 but is actually
+    // signed with an Ed25519 key (and ships an Ed25519 PEM) must fail the
+    // signature row. The P-256 dispatch tries to parse the PEM as a P-256
+    // key and either rejects the PEM or rejects the malformed DER signature.
     let tmp = TempDir::new().unwrap();
-    let bundle = tmp.path().join("v2-ecdsa.witness");
+    let bundle = tmp.path().join("v2-algorithm-lie.witness");
     let (known, _key) = seal_and_mutate(&bundle, |m| {
         m.manifest_version = 2;
         m.signer.algorithm = "ecdsa-p256".to_string();
@@ -189,14 +196,14 @@ fn v2_bundle_declaring_ecdsa_p256_fails_with_not_yet_implemented() {
     let report = verify_bundle(&bundle, &known).expect("verify");
     assert!(
         !report.signature_valid,
-        "v2 manifest declaring ecdsa-p256 must fail until the P-256 backend lands"
+        "ecdsa-p256 claim over an Ed25519 key/signature must fail"
     );
     assert!(
         report
             .details
             .iter()
-            .any(|d| d.contains("ecdsa-p256") && d.contains("ECDSA P-256 backend")),
-        "detail must name the missing P-256 backend: {:?}",
+            .any(|d| d.contains("signature did not verify")),
+        "detail must surface the verification failure: {:?}",
         report.details
     );
 }
