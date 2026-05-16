@@ -48,8 +48,8 @@ pub fn verify_pem(
     signature_der: &[u8],
 ) -> Result<(), WitnessCoreError> {
     let verifying = parse_public_key_pem(public_key_pem)?;
-    let signature = Signature::from_der(signature_der)
-        .map_err(|_| WitnessCoreError::SignatureInvalid)?;
+    let signature =
+        Signature::from_der(signature_der).map_err(|_| WitnessCoreError::SignatureInvalid)?;
     verifying
         .verify(payload, &signature)
         .map_err(|_| WitnessCoreError::SignatureInvalid)
@@ -165,8 +165,9 @@ mod tests {
 
     #[test]
     fn parse_public_key_pem_rejects_garbage() {
-        let err = parse_public_key_pem("-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n")
-            .expect_err("PEM with non-P-256 content must fail to parse");
+        let err =
+            parse_public_key_pem("-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n")
+                .expect_err("PEM with non-P-256 content must fail to parse");
         assert!(matches!(err, WitnessCoreError::BadPublicKey { .. }));
     }
 }

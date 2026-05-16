@@ -199,8 +199,7 @@ pub fn build_and_seal_bundle<S: BundleSigner>(
     // v1 bundles are Ed25519-only. Any non-Ed25519 algorithm forces v2 so
     // the wire form passes the schema's per-version algorithm gate; if a
     // future algorithm needs v3, bump its `minimum_manifest_version`.
-    let manifest_version =
-        MANIFEST_VERSION.max(signer_algorithm.minimum_manifest_version());
+    let manifest_version = MANIFEST_VERSION.max(signer_algorithm.minimum_manifest_version());
     let manifest = Manifest {
         manifest_version,
         bundle_id: bundle_id.clone(),

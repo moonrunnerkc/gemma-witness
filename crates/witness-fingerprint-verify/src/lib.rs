@@ -177,12 +177,11 @@ pub fn load_manifest(registry_dir: &Path) -> Result<RegistryManifest, VerifyErro
         path: path.clone(),
         source,
     })?;
-    let manifest: RegistryManifest = serde_json::from_str(&raw).map_err(|source| {
-        VerifyError::ManifestParse {
+    let manifest: RegistryManifest =
+        serde_json::from_str(&raw).map_err(|source| VerifyError::ManifestParse {
             path: path.clone(),
             source,
-        }
-    })?;
+        })?;
     if manifest.schema_version != REGISTRY_MANIFEST_SCHEMA_VERSION {
         return Err(VerifyError::ManifestSchemaMismatch {
             found: manifest.schema_version,
@@ -223,11 +222,7 @@ pub fn verify_consistency(
         }
     }
     for env_row in &manifest.covered_files {
-        if !on_disk
-            .covered_files
-            .iter()
-            .any(|r| r.path == env_row.path)
-        {
+        if !on_disk.covered_files.iter().any(|r| r.path == env_row.path) {
             return Err(VerifyError::MissingFile {
                 path: registry_dir.join(&env_row.path),
             });
@@ -271,8 +266,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         fs::write(dir.path().join("a.json"), b"{\"x\":1}").expect("write a");
         fs::write(dir.path().join("b.json"), b"{\"y\":2}").expect("write b");
-        fs::write(dir.path().join(REGISTRY_MANIFEST_FILENAME), b"ignored")
-            .expect("write manifest");
+        fs::write(dir.path().join(REGISTRY_MANIFEST_FILENAME), b"ignored").expect("write manifest");
         fs::write(dir.path().join(REGISTRY_BUNDLE_FILENAME), b"ignored").expect("write bundle");
 
         let manifest = compute_manifest(dir.path()).expect("compute");
@@ -363,7 +357,9 @@ mod tests {
         };
         let canonical = canonical_bytes(&manifest).expect("canon");
         let s = std::str::from_utf8(&canonical).expect("utf8");
-        let pos_schema = s.find("\"schema_version\"").expect("schema_version present");
+        let pos_schema = s
+            .find("\"schema_version\"")
+            .expect("schema_version present");
         let pos_signed = s.find("\"signed_at_utc\"").expect("signed_at_utc present");
         assert!(
             pos_schema < pos_signed,

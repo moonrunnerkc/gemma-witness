@@ -92,11 +92,9 @@ fn main() {
 /// boundary and at verifier load time so placeholder builds can never
 /// reach end users.
 fn enforce_registry_envelope(registry_dir: &Path) {
-    let envelope_path =
-        registry_dir.join(witness_fingerprint_verify::REGISTRY_MANIFEST_FILENAME);
+    let envelope_path = registry_dir.join(witness_fingerprint_verify::REGISTRY_MANIFEST_FILENAME);
     println!("cargo:rerun-if-changed={}", envelope_path.display());
-    let bundle_path =
-        registry_dir.join(witness_fingerprint_verify::REGISTRY_BUNDLE_FILENAME);
+    let bundle_path = registry_dir.join(witness_fingerprint_verify::REGISTRY_BUNDLE_FILENAME);
     println!("cargo:rerun-if-changed={}", bundle_path.display());
 
     let manifest = witness_fingerprint_verify::load_manifest(registry_dir).unwrap_or_else(|err| {

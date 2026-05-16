@@ -17,8 +17,7 @@
 use std::fs;
 use tempfile::TempDir;
 use witness_fingerprint_verify::{
-    REGISTRY_MANIFEST_FILENAME, canonical_bytes, compute_manifest, enforce_for_build,
-    VerifyError,
+    canonical_bytes, compute_manifest, enforce_for_build, VerifyError, REGISTRY_MANIFEST_FILENAME,
 };
 
 fn seed_registry(dir: &std::path::Path) {
@@ -38,7 +37,10 @@ fn enforce_for_build_passes_on_a_fresh_placeholder_envelope() {
     seed_registry(dir.path());
     seed_envelope(dir.path());
     let placeholder = enforce_for_build(dir.path()).expect("must pass");
-    assert!(placeholder, "freshly recomputed envelope must be a placeholder");
+    assert!(
+        placeholder,
+        "freshly recomputed envelope must be a placeholder"
+    );
 }
 
 #[test]
@@ -48,8 +50,7 @@ fn enforce_for_build_rejects_a_tampered_fingerprint_file() {
     seed_envelope(dir.path());
     // The envelope was just computed; tampering with one of the
     // fingerprint files after the fact must trip the content gate.
-    fs::write(dir.path().join("alpha.json"), b"{\"alpha\":\"tampered\"}")
-        .expect("tamper alpha");
+    fs::write(dir.path().join("alpha.json"), b"{\"alpha\":\"tampered\"}").expect("tamper alpha");
     let err = enforce_for_build(dir.path()).expect_err("must fail");
     assert!(
         matches!(err, VerifyError::HashMismatch { .. }),
@@ -100,8 +101,7 @@ fn enforce_for_build_rejects_a_truncated_envelope() {
     let dir = TempDir::new().expect("tempdir");
     seed_registry(dir.path());
     seed_envelope(dir.path());
-    fs::write(dir.path().join(REGISTRY_MANIFEST_FILENAME), b"{")
-        .expect("truncate envelope");
+    fs::write(dir.path().join(REGISTRY_MANIFEST_FILENAME), b"{").expect("truncate envelope");
     let err = enforce_for_build(dir.path()).expect_err("must fail");
     assert!(
         matches!(err, VerifyError::ManifestParse { .. }),

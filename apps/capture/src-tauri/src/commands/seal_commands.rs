@@ -253,9 +253,8 @@ fn choose_signer() -> Result<SealSigner, AppError> {
                 public_key_pem: handle.public_key_pem,
                 key_id: handle.key_id,
                 algorithm: SigningAlgorithm::EcdsaP256,
-                backend_note:
-                    "sealed by the Apple Secure Enclave (hardware-backed ECDSA P-256)."
-                        .to_string(),
+                backend_note: "sealed by the Apple Secure Enclave (hardware-backed ECDSA P-256)."
+                    .to_string(),
                 software_fallback: false,
                 sign_fn: Box::new(move |payload| provider_for_sign.sign(payload)),
                 attestation_fn: Box::new(move || provider_for_att.attestation()),

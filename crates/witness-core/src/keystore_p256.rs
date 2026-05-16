@@ -108,8 +108,6 @@ fn write_scalar_b64(scalar_b64: &str) -> Result<(), WitnessCoreError> {
 
 fn open_entry() -> Result<Entry, WitnessCoreError> {
     Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT).map_err(|err| WitnessCoreError::Keyring {
-        detail: format!(
-            "could not open keyring entry {KEYRING_SERVICE}/{KEYRING_ACCOUNT}: {err}"
-        ),
+        detail: format!("could not open keyring entry {KEYRING_SERVICE}/{KEYRING_ACCOUNT}: {err}"),
     })
 }

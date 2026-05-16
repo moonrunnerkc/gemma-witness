@@ -14,17 +14,20 @@
 //!   `crates/witness-fingerprints/build.rs` and by CI wherever the
 //!   envelope's authenticity matters.
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use witness_fingerprint_verify::{
-    REGISTRY_MANIFEST_FILENAME, RegistryManifest, canonical_bytes, compute_manifest, load_manifest,
-    signature::verify_signature, verify_consistency,
+    canonical_bytes, compute_manifest, load_manifest, signature::verify_signature,
+    verify_consistency, RegistryManifest, REGISTRY_MANIFEST_FILENAME,
 };
 
 #[derive(Parser)]
-#[command(version, about = "Maintain and verify the fingerprint registry envelope.")]
+#[command(
+    version,
+    about = "Maintain and verify the fingerprint registry envelope."
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -117,8 +120,7 @@ fn run_verify(registry_dir: &std::path::Path, require_signed: bool) -> Result<()
         );
         return Ok(());
     }
-    verify_signature(registry_dir, &manifest)
-        .map_err(|e| anyhow!("signature gate failed: {e}"))?;
+    verify_signature(registry_dir, &manifest).map_err(|e| anyhow!("signature gate failed: {e}"))?;
     eprintln!("content + signature gates passed");
     Ok(())
 }
@@ -128,8 +130,12 @@ fn run_finalize(registry_dir: &std::path::Path) -> Result<()> {
     // matches the actual registry. A divergence between the envelope and
     // disk would mean cosign signs bytes that no longer match the files
     // the verifier later hashes.
-    let mut manifest = compute_manifest(registry_dir)
-        .with_context(|| format!("could not recompute manifest from {}", registry_dir.display()))?;
+    let mut manifest = compute_manifest(registry_dir).with_context(|| {
+        format!(
+            "could not recompute manifest from {}",
+            registry_dir.display()
+        )
+    })?;
     manifest.placeholder = false;
     manifest.placeholder_reason = None;
     manifest.signed_at_utc = Some(Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
@@ -146,7 +152,6 @@ fn run_finalize(registry_dir: &std::path::Path) -> Result<()> {
 fn write_manifest(registry_dir: &std::path::Path, manifest: &RegistryManifest) -> Result<()> {
     let bytes = canonical_bytes(manifest).context("could not JCS-canonicalize manifest")?;
     let path = registry_dir.join(REGISTRY_MANIFEST_FILENAME);
-    std::fs::write(&path, &bytes)
-        .with_context(|| format!("could not write {}", path.display()))?;
+    std::fs::write(&path, &bytes).with_context(|| format!("could not write {}", path.display()))?;
     Ok(())
 }

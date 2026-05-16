@@ -45,11 +45,11 @@ use core_foundation::base::TCFType;
 use core_foundation::data::CFData;
 use core_foundation::error::{CFError, CFErrorRef};
 use core_foundation::string::CFStringRef;
+use core_foundation_sys::data::CFDataRef;
 use p256::pkcs8::der::pem::LineEnding;
 use p256::pkcs8::EncodePublicKey;
 use p256::PublicKey;
 use security_framework::key::{Algorithm, GenerateKeyOptions, KeyType, SecKey, Token};
-use core_foundation_sys::data::CFDataRef;
 use security_framework_sys::base::SecKeyRef;
 
 use crate::error::WitnessCoreError;
@@ -172,9 +172,7 @@ impl KeyProvider for SecureEnclaveProvider {
     }
 
     fn attestation(&self) -> Option<SignerAttestation> {
-        self.with_key(|key| Ok(attest_sep_key(key)))
-            .ok()
-            .flatten()
+        self.with_key(|key| Ok(attest_sep_key(key))).ok().flatten()
     }
 }
 
@@ -230,10 +228,7 @@ fn load_system_attestation_key() -> Option<SecKey> {
 
 /// Call `SecKeyCreateAttestation(system_key, key_to_attest)` and return
 /// the payload bytes if it succeeds.
-fn sec_key_create_attestation(
-    system_key: &SecKey,
-    key_to_attest: &SecKey,
-) -> Option<Vec<u8>> {
+fn sec_key_create_attestation(system_key: &SecKey, key_to_attest: &SecKey) -> Option<Vec<u8>> {
     let mut error: CFErrorRef = std::ptr::null_mut();
     let data_ref = unsafe {
         SecKeyCreateAttestation(
@@ -339,7 +334,11 @@ mod tests {
         let public = PublicKey::from(key.verifying_key());
         let encoded = public.to_encoded_point(false);
         let sec1 = encoded.as_bytes().to_vec();
-        assert_eq!(sec1.len(), 65, "P-256 uncompressed point is always 65 bytes");
+        assert_eq!(
+            sec1.len(),
+            65,
+            "P-256 uncompressed point is always 65 bytes"
+        );
         let pem = sec1_to_spki_pem(&sec1).expect("encode SPKI from valid SEC1 point");
         let parsed = crate::signing_ecdsa::parse_public_key_pem(&pem)
             .expect("our SPKI output must parse via the verifier path");

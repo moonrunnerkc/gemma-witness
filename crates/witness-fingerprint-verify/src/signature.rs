@@ -12,8 +12,8 @@
 //! release workflow signs an envelope a verifier refuses, or a verifier
 //! accepts an identity the workflow never uses.
 
-use crate::{REGISTRY_BUNDLE_FILENAME, RegistryManifest, VerifyError, canonical_bytes};
-use sigstore_trust_root::{SIGSTORE_PRODUCTION_TRUSTED_ROOT, TrustedRoot};
+use crate::{canonical_bytes, RegistryManifest, VerifyError, REGISTRY_BUNDLE_FILENAME};
+use sigstore_trust_root::{TrustedRoot, SIGSTORE_PRODUCTION_TRUSTED_ROOT};
 use sigstore_verify::types::Bundle;
 use sigstore_verify::{VerificationPolicy, Verifier};
 use std::path::Path;

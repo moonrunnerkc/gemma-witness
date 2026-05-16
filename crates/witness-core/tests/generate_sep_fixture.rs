@@ -127,15 +127,12 @@ fn generate_secure_enclave_fixture() {
         },
         consistency: ConsistencyVerdict {
             verdict: ConsistencyLabel::Consistent,
-            summary: Some(
-                "audio narration aligns with the photographed scene".to_string(),
-            ),
+            summary: Some("audio narration aligns with the photographed scene".to_string()),
         },
         model_fingerprint: ModelFingerprint {
             model_id: "mlx-community/gemma-4-e4b-it-4bit".to_string(),
             revision: "cc3b666c01c20395e0dcebd53854504c7d9821f9".to_string(),
-            sha256: "339409bd18494955556e1fde6ccc15faaa9f707b911b74791fe290b9d722beed"
-                .to_string(),
+            sha256: "339409bd18494955556e1fde6ccc15faaa9f707b911b74791fe290b9d722beed".to_string(),
         },
         capture_environment: CaptureEnvironment {
             os: "macOS".to_string(),

@@ -120,7 +120,9 @@ fn sep_signed_v2_bundle_round_trips() {
         .expect("SEP key generation must succeed on Apple Silicon");
     assert_eq!(handle.algorithm, SigningAlgorithm::EcdsaP256);
 
-    let signer = SepBundleSigner { provider: &provider };
+    let signer = SepBundleSigner {
+        provider: &provider,
+    };
     let inputs = make_inputs(handle.public_key_pem.clone(), handle.key_id.clone());
     let known: Vec<KnownFingerprint> = vec![inputs.model_fingerprint.clone().into()];
 

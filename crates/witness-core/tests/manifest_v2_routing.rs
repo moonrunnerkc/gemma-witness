@@ -283,7 +283,8 @@ fn unknown_manifest_version_is_rejected_at_routing() {
         .collect();
     write_bundle(&bundle, &zipped).unwrap();
 
-    let err = verify_bundle(&bundle, &known).expect_err("verifier must hard-error on unknown version");
+    let err =
+        verify_bundle(&bundle, &known).expect_err("verifier must hard-error on unknown version");
     let message = err.to_string();
     assert!(
         message.contains("manifest_version 99") && message.contains("not supported"),
