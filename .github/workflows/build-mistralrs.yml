@@ -1,0 +1,235 @@
+name: Build mistralrs pinned binary
+
+# Audit finding S-7 (continued): the only safe way to populate PINNED.json's
+# binaries[] array is to build the pinned commit on the same CI infrastructure
+# that produces the release, hash the artifact, and propose a PR that records
+# the SHA-256 next to the target triple it was built on. A human pins the
+# upstream commit; this workflow pins the resulting binary's bytes.
+#
+# Two entry points:
+#   workflow_dispatch     used for the *bootstrap* of PINNED.json after a
+#                         human picks the audited upstream_commit. Opens a
+#                         PR with the freshly-computed binaries[].
+#   push: tags ['v*']     used at *release time* to re-verify that the pinned
+#                         binaries[] still reproduce on a clean runner and to
+#                         attach them to the release artifacts. Fails the
+#                         release if reproduction diverges.
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_commit:
+        description: >-
+          Override PINNED.json's upstream_commit for this run. Leave blank
+          to use the value already on disk. Required when bootstrapping
+          from placeholder=true.
+        required: false
+        type: string
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  build:
+    name: build (${{ matrix.os }} / ${{ matrix.triple }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            triple: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            triple: aarch64-apple-darwin
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    outputs: {}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable 2025-04-09
+        with:
+          toolchain: stable
+          targets: ${{ matrix.triple }}
+
+      - name: Resolve upstream commit
+        id: resolve
+        shell: bash
+        run: |
+          input_commit='${{ github.event.inputs.upstream_commit }}'
+          file_commit="$(python3 -c "import json; print(json.load(open('inference/mistralrs-sidecar/PINNED.json'))['upstream_commit'])")"
+          file_placeholder="$(python3 -c "import json; print(str(json.load(open('inference/mistralrs-sidecar/PINNED.json'))['placeholder']).lower())")"
+          if [ -n "$input_commit" ]; then
+            commit="$input_commit"
+            echo "using upstream_commit from workflow input: $commit"
+          else
+            commit="$file_commit"
+            if [ "$file_placeholder" = "true" ]; then
+              echo "ERROR: PINNED.json declares placeholder=true and no workflow_dispatch input was supplied. supply upstream_commit explicitly to bootstrap." >&2
+              exit 1
+            fi
+            echo "using upstream_commit from PINNED.json: $commit"
+          fi
+          if [ "${#commit}" -lt 40 ] || [ "${#commit}" -gt 40 ]; then
+            echo "ERROR: upstream_commit \"$commit\" is not a 40-char SHA. refusing to build." >&2
+            exit 1
+          fi
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      - name: Build mistralrs-server from pinned commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          commit="${{ steps.resolve.outputs.commit }}"
+          target="${{ matrix.triple }}"
+          out="$RUNNER_TEMP/mistralrs-out"
+          mkdir -p "$out"
+          cargo install --locked \
+            --git https://github.com/EricLBuehler/mistral.rs \
+            --rev "$commit" \
+            --target "$target" \
+            --root "$out" \
+            mistralrs-server
+
+      - name: Hash and stage binary
+        id: stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${{ matrix.triple }}"
+          out="$RUNNER_TEMP/mistralrs-out"
+          ext=""
+          [ "${{ matrix.os }}" = "windows-latest" ] && ext=".exe"
+          src="$out/bin/mistralrs-server${ext}"
+          if [ ! -f "$src" ]; then
+            echo "ERROR: expected $src to exist after cargo install. mistral.rs binary name may have changed." >&2
+            exit 1
+          fi
+          mkdir -p artifacts
+          dest="artifacts/mistralrs-${target}${ext}"
+          cp "$src" "$dest"
+          sha="$(shasum -a 256 "$dest" | awk '{print $1}')"
+          echo "$sha  $(basename "$dest")" > "artifacts/$(basename "$dest").sha256"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "filename=$(basename "$dest")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mistralrs-${{ matrix.triple }}
+          path: artifacts/
+
+  consolidate:
+    name: Consolidate hashes and update PINNED.json
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: downloads
+
+      - name: Compose proposed PINNED.json
+        id: compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p proposed
+          input_commit='${{ github.event.inputs.upstream_commit }}'
+          file_commit="$(python3 -c "import json; print(json.load(open('inference/mistralrs-sidecar/PINNED.json'))['upstream_commit'])")"
+          commit="${input_commit:-$file_commit}"
+          if [ "${#commit}" -ne 40 ]; then
+            echo "ERROR: refusing to write a non-40-char commit ($commit)." >&2
+            exit 1
+          fi
+          # Collect (triple, sha256) pairs from the artifact tree.
+          python3 - "$commit" <<'PY' > proposed/PINNED.json
+          import json, os, sys
+          commit = sys.argv[1]
+          rows = []
+          for root, _, files in os.walk("downloads"):
+              for name in files:
+                  if name.endswith(".sha256"):
+                      with open(os.path.join(root, name)) as f:
+                          line = f.read().strip()
+                      sha, file_name = line.split()
+                      # filename pattern: mistralrs-<triple>(.exe)?
+                      base = file_name
+                      if base.endswith(".exe"):
+                          base = base[:-4]
+                      assert base.startswith("mistralrs-"), base
+                      triple = base[len("mistralrs-"):]
+                      rows.append({
+                          "target_triple": triple,
+                          "sha256": sha,
+                          "filename": file_name,
+                      })
+          rows.sort(key=lambda r: r["target_triple"])
+
+          existing = json.load(open("inference/mistralrs-sidecar/PINNED.json"))
+          existing["upstream_commit"] = commit
+          existing["placeholder"] = False
+          existing.pop("placeholder_reason", None)
+          existing["binaries"] = rows
+          # Update cargo_install_args to reflect the resolved commit.
+          for i, v in enumerate(existing.get("cargo_install_args", [])):
+              if v == "--rev" and i + 1 < len(existing["cargo_install_args"]):
+                  existing["cargo_install_args"][i + 1] = commit
+          json.dump(existing, sys.stdout, indent=2)
+          sys.stdout.write("\n")
+          PY
+          diff -u inference/mistralrs-sidecar/PINNED.json proposed/PINNED.json || true
+
+      - name: Open pull request with updated PINNED.json
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="bot/pin-mistralrs-$(date -u +%Y%m%d%H%M%S)"
+          git checkout -b "$branch"
+          cp proposed/PINNED.json inference/mistralrs-sidecar/PINNED.json
+          git add inference/mistralrs-sidecar/PINNED.json
+          git commit -m "chore(sidecar): pin mistralrs binary hashes for upstream commit $(jq -r .upstream_commit inference/mistralrs-sidecar/PINNED.json)"
+          git push --set-upstream origin "$branch"
+          gh pr create \
+            --title "chore(sidecar): pin mistralrs binary hashes" \
+            --body "Generated by .github/workflows/build-mistralrs.yml. The binaries[] array carries the SHA-256 of each per-target build of the pinned mistral.rs upstream commit. Merge after manual inspection." \
+            --base main \
+            --head "$branch"
+
+      - name: Verify reproduction at tag time
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Tag-time path: PINNED.json on the tagged commit is the source of
+          # truth. Confirm the freshly-built hashes match what's already
+          # pinned. A mismatch is a hard failure: it means the build is no
+          # longer reproducible or someone edited PINNED.json by hand.
+          diff -u inference/mistralrs-sidecar/PINNED.json proposed/PINNED.json
+
+      - name: Flatten artifact tree for release upload
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          mkdir -p final
+          find downloads -type f -exec cp {} final/ \;
+          ls -la final
+
+      - name: Attach mistralrs binaries to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2.0.8
+        with:
+          files: |
+            final/mistralrs-*
+            final/*.sha256

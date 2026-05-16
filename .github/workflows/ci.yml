@@ -58,6 +58,11 @@ jobs:
         env:
           RUST_BACKTRACE: 1
 
+      - name: mistralrs sidecar gate (start.sh hash check)
+        run: |
+          cargo build --locked -p check-pinned-binary
+          ./inference/mistralrs-sidecar/tests/start-sh-gate.sh
+
   rust-coverage:
     runs-on: macos-latest
     steps:
