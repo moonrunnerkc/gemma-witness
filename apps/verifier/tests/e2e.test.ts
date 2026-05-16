@@ -887,6 +887,131 @@ async function runTests(): Promise<void> {
     console.log("PASS T20");
   }
 
+  // T21 (negative): signature.json with the canonicalization field stripped.
+  // The verifier requires it to read "rfc8785"; a missing or different value
+  // must fail the signature row before any crypto runs.
+  console.log("--- T21 (negative): signature with wrong canonicalization value");
+  {
+    const mutated = mutateBundle((entries) => {
+      const raw = entries.get("signature.json")!;
+      const sigDoc = JSON.parse(strFromU8(raw));
+      sigDoc.canonicalization = "json-c14n";
+      entries.set("signature.json", new TextEncoder().encode(JSON.stringify(sigDoc)));
+    });
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
+    assert(!outcome.ok, "T21: overall must fail");
+    const sigRow = rowByName(outcome, "Signature valid");
+    assert(!sigRow.passed, "T21: signature row must fail");
+    assert(
+      sigRow.details.some((d) => d.includes("canonicalization") || d.includes("rfc8785")),
+      `T21: details must name the canonicalization mismatch; got ${JSON.stringify(sigRow.details)}`,
+    );
+    console.log("PASS T21");
+  }
+
+  // T22 (negative): signature_b64 with structurally invalid base64 padding.
+  // The decode step must fail with a recognizable error, not throw or pass.
+  console.log("--- T22 (negative): signature_b64 with invalid base64 padding");
+  {
+    const mutated = mutateBundle((entries) => {
+      const raw = entries.get("signature.json")!;
+      const sigDoc = JSON.parse(strFromU8(raw));
+      sigDoc.signature_b64 = "AAAA=";
+      entries.set("signature.json", new TextEncoder().encode(JSON.stringify(sigDoc)));
+    });
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
+    assert(!outcome.ok, "T22: overall must fail");
+    assert(!rowByName(outcome, "Signature valid").passed, "T22: signature row must fail");
+    console.log("PASS T22");
+  }
+
+  // T23 (negative): signature.json with the wrong signed_payload value.
+  // The verifier only signs over manifest.json; any other value must be
+  // rejected even if the rest of the document looks valid.
+  console.log("--- T23 (negative): signature with wrong signed_payload value");
+  {
+    const mutated = mutateBundle((entries) => {
+      const raw = entries.get("signature.json")!;
+      const sigDoc = JSON.parse(strFromU8(raw));
+      sigDoc.signed_payload = "assets/audio.wav";
+      entries.set("signature.json", new TextEncoder().encode(JSON.stringify(sigDoc)));
+    });
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
+    assert(!outcome.ok, "T23: overall must fail");
+    const sigRow = rowByName(outcome, "Signature valid");
+    assert(!sigRow.passed, "T23: signature row must fail");
+    assert(
+      sigRow.details.some((d) => d.includes("signed_payload") || d.includes("manifest")),
+      `T23: details must name the signed_payload mismatch; got ${JSON.stringify(sigRow.details)}`,
+    );
+    console.log("PASS T23");
+  }
+
+  // T24 (negative): bumped manifest.created_at without re-signing. The
+  // signature covers the canonicalized manifest, so any byte change in
+  // the timestamp invalidates it; this confirms there is no time-based
+  // replay window.
+  console.log("--- T24 (negative): replay with bumped manifest.created_at");
+  {
+    const mutated = mutateBundle((entries) => {
+      const raw = entries.get("manifest.json")!;
+      const manifest = JSON.parse(strFromU8(raw));
+      manifest.created_at = "2099-01-01T00:00:00Z";
+      entries.set("manifest.json", new TextEncoder().encode(JSON.stringify(manifest)));
+    });
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
+    assert(!outcome.ok, "T24: overall must fail");
+    assert(!rowByName(outcome, "Signature valid").passed, "T24: signature row must fail after timestamp bump");
+    console.log("PASS T24");
+  }
+
+  // T25 (negative): a structurally malformed signature document where
+  // a required field is missing. The verifier must surface this as a
+  // bundle-structure problem rather than silently passing.
+  console.log("--- T25 (negative): signature.json missing required field");
+  {
+    const mutated = mutateBundle((entries) => {
+      const raw = entries.get("signature.json")!;
+      const sigDoc = JSON.parse(strFromU8(raw));
+      delete sigDoc.canonicalization;
+      entries.set("signature.json", new TextEncoder().encode(JSON.stringify(sigDoc)));
+    });
+    let outcome;
+    let threw = false;
+    try {
+      outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
+    } catch {
+      threw = true;
+    }
+    assert(
+      threw || (outcome !== undefined && !outcome.ok),
+      "T25: missing required signature field must either throw or fail the row",
+    );
+    console.log("PASS T25");
+  }
+
+  // T26 (negative): a bundle truncated to half its size. The unzip step
+  // may either throw (central directory unreadable) or surface the gap
+  // as a missing required entry; either is correct, the invariant is
+  // that a truncated bundle never reaches a green verification.
+  console.log("--- T26 (negative): truncated bundle (half the bytes lopped)");
+  {
+    const buf = fs.readFileSync(FIXTURE);
+    const truncated = buf.subarray(0, Math.floor(buf.length / 2));
+    let outcome;
+    let threw = false;
+    try {
+      outcome = await verifyBundle(toArrayBuffer(truncated), KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
+    } catch {
+      threw = true;
+    }
+    assert(
+      threw || (outcome !== undefined && !outcome.ok),
+      "T26: a truncated bundle must never reach a green verification",
+    );
+    console.log("PASS T26");
+  }
+
   console.log("\n=== ALL E2E TESTS PASSED ===");
 }
 

@@ -65,6 +65,13 @@ const ALGORITHM_ED25519: &str = "ed25519";
 /// implemented" message rather than being misread as Ed25519.
 const ALGORITHM_ECDSA_P256: &str = "ecdsa-p256";
 
+/// Maximum length (in characters) of the base64-encoded attestation
+/// payload accepted by the verifier. Caps the decoded blob at 16 KiB,
+/// well above what any current hardware attestation format produces
+/// (Apple SEP attestations: ~700 B, TPM2 quotes: ~2 KiB). Bounds memory
+/// during parsing and refuses denial-of-service via oversized bundles.
+pub const MAX_ATTESTATION_PAYLOAD_B64_LEN: usize = 22_528;
+
 /// Returns the set of `signature.algorithm` and `manifest.signer.algorithm`
 /// values permitted for a given `manifest_version`.
 fn algorithms_permitted_for_version(version: u32) -> &'static [&'static str] {
@@ -290,6 +297,18 @@ fn check_signature(
             "manifest.signer.attestation is present on a v1 manifest. the attestation blob is a v2-only field; a v1 bundle that carries it is malformed.".to_string()
         );
         return false;
+    }
+    if let Some(att) = manifest.signer.attestation.as_ref() {
+        if att.payload_b64.len() > MAX_ATTESTATION_PAYLOAD_B64_LEN {
+            details.push(format!(
+                "manifest.signer.attestation.payload_b64 is {} bytes (base64-encoded); the cap is {} bytes (= 16 KiB decoded). \
+                 oversized attestations are refused to bound verifier memory and to make denial-of-service via \
+                 bloated bundles impossible.",
+                att.payload_b64.len(),
+                MAX_ATTESTATION_PAYLOAD_B64_LEN
+            ));
+            return false;
+        }
     }
     if signature_doc.canonicalization != EXPECTED_CANONICALIZATION {
         details.push(format!(

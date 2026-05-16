@@ -63,6 +63,15 @@ jobs:
           cargo build --locked -p check-pinned-binary
           ./inference/mistralrs-sidecar/tests/start-sh-gate.sh
 
+      - name: fuzz harnesses build-check (catches API regressions)
+        # The actual fuzzing runs in fuzz-nightly.yml under nightly Rust.
+        # Per-push we just need to know the harnesses still link against
+        # the current witness-core public API; cargo check on stable is
+        # sufficient because libfuzzer-sys's Rust surface is well-formed
+        # without the sanitizer flag.
+        working-directory: crates/witness-core/fuzz
+        run: cargo check --locked
+
   rust-coverage:
     runs-on: macos-latest
     steps:

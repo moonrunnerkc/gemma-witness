@@ -1,0 +1,48 @@
+[package]
+name = "witness-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1"
+tempfile = "3"
+
+[dependencies.witness-core]
+path = ".."
+
+[[bin]]
+name = "canonicalize"
+path = "fuzz_targets/canonicalize.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "manifest_parse"
+path = "fuzz_targets/manifest_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "bundle_read"
+path = "fuzz_targets/bundle_read.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "signature_verify"
+path = "fuzz_targets/signature_verify.rs"
+test = false
+doc = false
+bench = false
+
+# The fuzz crate is excluded from the main workspace so cargo-fuzz can apply
+# its sanitizer flags without affecting the rest of the build.
+[workspace]

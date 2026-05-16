@@ -1,0 +1,63 @@
+name: Fuzz (nightly)
+
+on:
+  schedule:
+    # 07:00 UTC daily; off-peak for the maintainer's timezone.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      duration_seconds:
+        description: "Per-harness fuzz duration"
+        required: false
+        default: "900"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - canonicalize
+          - manifest_parse
+          - bundle_read
+          - signature_verify
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Install nightly Rust
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable as of 2025-04-09
+        with:
+          toolchain: nightly-2025-04-09
+          components: rust-src
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.7.3
+        with:
+          prefix-key: "v1-fuzz-nightly"
+          workspaces: |
+            .
+            crates/witness-core/fuzz
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Run fuzz target (${{ matrix.target }})
+        env:
+          DURATION: ${{ github.event.inputs.duration_seconds || '900' }}
+        working-directory: crates/witness-core/fuzz
+        run: |
+          cargo +nightly-2025-04-09 fuzz run ${{ matrix.target }} -- \
+            -max_total_time=${DURATION} -timeout=10 -rss_limit_mb=2048
+
+      - name: Upload crash artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: crates/witness-core/fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
