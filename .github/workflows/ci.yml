@@ -336,6 +336,32 @@ jobs:
       - name: fake sidecar unit tests
         run: cargo test --locked -p witness-test-sidecar -- --nocapture
 
+  transformers-sidecar-boot:
+    name: transformers-sidecar boot + handshake
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Install uv (pinned)
+        # uv install script with version pin. Avoids depending on an unpinned
+        # third-party action and keeps the version of the package manager
+        # under the same change-control as everything else in this workflow.
+        run: |
+          curl -LsSf https://astral.sh/uv/0.11.13/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: uv sync --frozen
+        working-directory: inference/transformers-sidecar
+        run: uv sync --frozen
+
+      - name: boot + handshake tests
+        # Validates that the FastAPI surface boots, start.py imports cleanly,
+        # and /v1/models returns the OpenAI-compatible envelope. Does NOT load
+        # the gated google/gemma-4-E4B-it weights; full inference is exercised
+        # by .github/workflows/live-e2e.yml on hardware that can host them.
+        working-directory: inference/transformers-sidecar
+        run: uv run pytest tests/ -v
+
   em-dash-scan:
     runs-on: ubuntu-latest
     steps:

@@ -70,3 +70,18 @@ Pass standard OpenAI fields in the request body:
   accelerator (CUDA, MPS, or CPU).
 - `bfloat16` is used when a CUDA device is present; otherwise `float32` is
   used for CPU compatibility.
+
+## Tests
+
+`tests/test_boot_handshake.py` is the per-PR Linux gate. It uses FastAPI's
+`TestClient` to confirm the sidecar's HTTP surface boots, that `start.py`
+imports without raising, and that `/v1/models` returns the expected
+OpenAI-compatible envelope. The tests deliberately do NOT load the model
+weights, so they run in seconds without HF authentication and without GPU
+access. Full inference is exercised in the live-e2e workflow on hardware
+that can host the gated `google/gemma-4-E4B-it` weights.
+
+```bash
+uv sync
+uv run pytest tests/ -v
+```
