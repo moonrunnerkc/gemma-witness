@@ -1,0 +1,21 @@
+[package]
+name = "witness-fingerprint-verify"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Canonicalizes and verifies the integrity of inference/fingerprints/ against a Sigstore-signed envelope."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_jcs = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+thiserror = { workspace = true }
+sigstore-verify = { version = "0.7", default-features = false, features = ["rustls"] }
+sigstore-trust-root = { version = "0.7", default-features = false }
+
+[dev-dependencies]
+tempfile = "3.12"
