@@ -93,6 +93,9 @@ export type SealedBundle = {
 	bundleId: string,
 	signerKeyId: string,
 	path: string,
+	signerAlgorithm: string,
+	softwareFallback: boolean,
+	signerBackendNote: string,
 };
 
 /* Tauri Specta runtime */

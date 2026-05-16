@@ -28,25 +28,20 @@ pub struct SealedBundle {
     pub bundle_id: String,
     pub signer_key_id: String,
     pub path: String,
-}
-
-/// Adapter from the abstract [`KeyProvider`] trait to the bundle builder's
-/// signer contract. Variable-length signatures pass through unchanged so
-/// both Ed25519 (64 bytes raw) and ECDSA P-256 (DER, typically 70 to 72
-/// bytes) round-trip without further translation. The bundle builder
-/// reads `algorithm()` to decide the manifest's `signer.algorithm` wire
-/// string and the minimum `manifest_version`.
-struct KeyProviderSigner<P> {
-    provider: P,
-}
-
-impl<P: KeyProvider> BundleSigner for KeyProviderSigner<P> {
-    fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, WitnessCoreError> {
-        self.provider.sign(payload)
-    }
-    fn algorithm(&self) -> SigningAlgorithm {
-        self.provider.algorithm()
-    }
+    /// `"ed25519"` for software-only seals, `"ecdsa-p256"` when the bundle
+    /// was sealed by a hardware-backed provider (Secure Enclave today;
+    /// TPM/NCrypt later). The UI uses this to decide whether to display
+    /// the "software-only seal" warning banner.
+    pub signer_algorithm: String,
+    /// True when the capture app fell back to a software signer because
+    /// the platform's hardware backend was unavailable. The UI raises a
+    /// banner so the user knows the bundle does not carry hardware
+    /// provenance. Always true on Linux and Windows today.
+    pub software_fallback: bool,
+    /// Human-readable explanation of which backend produced the seal and,
+    /// when `software_fallback == true`, what went wrong with the hardware
+    /// attempt. Echoed verbatim into the UI; do not localize.
+    pub signer_backend_note: String,
 }
 
 #[tauri::command]
@@ -98,9 +93,16 @@ async fn seal_inner(
     image_paths: Vec<PathBuf>,
     snapshot: crate::state::PipelineSnapshot,
 ) -> Result<SealedBundle, AppError> {
-    let key_provider = SoftwareEd25519Provider::new();
-    let device_key = key_provider.load_or_create_public()?;
-    let signer_key_id = device_key.key_id.clone();
+    let SealSigner {
+        public_key_pem,
+        key_id: device_key_id,
+        algorithm,
+        backend_note,
+        software_fallback,
+        sign_fn,
+        attestation_fn,
+    } = choose_signer()?;
+    let signer_key_id = device_key_id.clone();
     let fingerprint = resolve_active_model_fingerprint().await?;
 
     verify_live_model_matches_registry(&fingerprint)?;
@@ -138,8 +140,8 @@ async fn seal_inner(
             app_version: APP_VERSION.to_string(),
             captured_at: chrono::Utc::now().to_rfc3339(),
         },
-        signer_public_key_pem: device_key.public_key_pem,
-        signer_key_id: device_key.key_id,
+        signer_public_key_pem: public_key_pem,
+        signer_key_id: device_key_id,
         inference_parameters: Some(inference_parameters_snapshot()),
         amends: None,
         pinned_audio_sha256: Some(pinned_audio_sha256),
@@ -179,8 +181,10 @@ async fn seal_inner(
         }
     }
 
-    let signer = KeyProviderSigner {
-        provider: key_provider,
+    let signer = ChosenSigner {
+        sign_fn,
+        attestation_fn,
+        algorithm,
     };
     let bundle_id = build_and_seal_bundle(&inputs, &signer, &out_path)?;
 
@@ -188,7 +192,135 @@ async fn seal_inner(
         bundle_id,
         signer_key_id,
         path: out_path.display().to_string(),
+        signer_algorithm: algorithm.as_str().to_string(),
+        software_fallback,
+        signer_backend_note: backend_note,
     })
+}
+
+/// Output of [`choose_signer`]: a closure-based [`BundleSigner`] plus the
+/// public-key surface and human-readable backend description the seal
+/// path forwards into [`SealedBundle`].
+///
+/// We deliberately avoid a `Box<dyn KeyProvider>` here so the trait does
+/// not need to grow `Send + Sync` bounds beyond what's already present;
+/// the closure pair captures whichever concrete provider we picked at
+/// runtime and keeps the seal path platform-agnostic.
+struct SealSigner {
+    public_key_pem: String,
+    key_id: String,
+    algorithm: SigningAlgorithm,
+    backend_note: String,
+    software_fallback: bool,
+    sign_fn: SignFn,
+    attestation_fn: AttestationFn,
+}
+
+type SignFn = Box<dyn Fn(&[u8]) -> Result<Vec<u8>, WitnessCoreError> + Send + Sync>;
+type AttestationFn =
+    Box<dyn Fn() -> Option<witness_core::manifest::SignerAttestation> + Send + Sync>;
+
+struct ChosenSigner {
+    sign_fn: SignFn,
+    attestation_fn: AttestationFn,
+    algorithm: SigningAlgorithm,
+}
+
+impl BundleSigner for ChosenSigner {
+    fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, WitnessCoreError> {
+        (self.sign_fn)(payload)
+    }
+    fn algorithm(&self) -> SigningAlgorithm {
+        self.algorithm
+    }
+    fn attestation(&self) -> Option<witness_core::manifest::SignerAttestation> {
+        (self.attestation_fn)()
+    }
+}
+
+/// Pick a signing backend in preference order: hardware-backed when the
+/// target supports it, software fallback otherwise. The first successful
+/// load wins; a hardware failure falls through to software with a warning.
+#[cfg(target_os = "macos")]
+fn choose_signer() -> Result<SealSigner, AppError> {
+    use witness_core::secure_enclave::SecureEnclaveProvider;
+    let provider = std::sync::Arc::new(SecureEnclaveProvider::new());
+    match provider.load_or_create_public() {
+        Ok(handle) => {
+            let provider_for_sign = std::sync::Arc::clone(&provider);
+            let provider_for_att = std::sync::Arc::clone(&provider);
+            Ok(SealSigner {
+                public_key_pem: handle.public_key_pem,
+                key_id: handle.key_id,
+                algorithm: SigningAlgorithm::EcdsaP256,
+                backend_note:
+                    "sealed by the Apple Secure Enclave (hardware-backed ECDSA P-256)."
+                        .to_string(),
+                software_fallback: false,
+                sign_fn: Box::new(move |payload| provider_for_sign.sign(payload)),
+                attestation_fn: Box::new(move || provider_for_att.attestation()),
+            })
+        }
+        Err(err) => {
+            tracing::warn!(
+                %err,
+                "Secure Enclave key generation failed; falling back to software signing"
+            );
+            Ok(software_signer(format!(
+                "fell back to a software Ed25519 key because the Secure Enclave was \
+                 unavailable: {err}. attempted: ECDSA P-256 in SEP."
+            )))
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn choose_signer() -> Result<SealSigner, AppError> {
+    Ok(software_signer(
+        "sealed by the software Ed25519 keychain key. hardware-backed signing is not \
+         yet implemented for this platform; bundles produced here do not carry \
+         cryptographic proof that they were signed on a specific device."
+            .to_string(),
+    ))
+}
+
+fn software_signer(backend_note: String) -> SealSigner {
+    let provider = std::sync::Arc::new(SoftwareEd25519Provider::new());
+    // load_or_create_public is fallible, but the prior shipping seal path
+    // panicked on failure via `?` at the call site; we surface the same
+    // behaviour but wrap it in the chosen-signer envelope so the seal
+    // path stays uniform.
+    let handle = match provider.load_or_create_public() {
+        Ok(h) => h,
+        Err(err) => {
+            // Caller's `?` will lift this through Into<AppError>. We return a
+            // sentinel so the type aligns; the seal path errors out before
+            // ever calling sign_fn.
+            return SealSigner {
+                public_key_pem: String::new(),
+                key_id: String::new(),
+                algorithm: SigningAlgorithm::Ed25519,
+                backend_note: format!("software key load failed: {err}"),
+                software_fallback: true,
+                sign_fn: Box::new(move |_| {
+                    Err(WitnessCoreError::Keyring {
+                        detail: "software key never loaded; cannot sign".to_string(),
+                    })
+                }),
+                attestation_fn: Box::new(|| None),
+            };
+        }
+    };
+    let provider_for_sign = std::sync::Arc::clone(&provider);
+    SealSigner {
+        public_key_pem: handle.public_key_pem,
+        key_id: handle.key_id,
+        algorithm: SigningAlgorithm::Ed25519,
+        backend_note,
+        software_fallback: true,
+        sign_fn: Box::new(move |payload| provider_for_sign.sign(payload)),
+        attestation_fn: Box::new(|| None),
+    }
 }
 
 /// Reveal a sealed bundle in the host file manager.

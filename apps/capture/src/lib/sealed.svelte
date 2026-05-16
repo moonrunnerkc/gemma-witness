@@ -51,6 +51,26 @@
     </div>
   </div>
 
+  {#if sealed.softwareFallback}
+    <div class="warning-banner" role="alert">
+      <Icon name="shield" size={16} />
+      <div>
+        <strong>Software-only signature.</strong>
+        {sealed.signerBackendNote}
+        The bundle still verifies, but it does not carry hardware-backed
+        proof that it was signed on this specific device.
+      </div>
+    </div>
+  {:else}
+    <div class="hardware-banner">
+      <Icon name="shield" size={16} />
+      <div>
+        <strong>Hardware-backed signature.</strong>
+        {sealed.signerBackendNote}
+      </div>
+    </div>
+  {/if}
+
   <dl class="kv">
     <div class="kv-row">
       <dt>Bundle id</dt>
@@ -70,6 +90,12 @@
             copy
           {/if}
         </button>
+      </dd>
+    </div>
+    <div class="kv-row">
+      <dt>Signer</dt>
+      <dd>
+        <code>{sealed.signerAlgorithm}</code>
       </dd>
     </div>
     <div class="kv-row">
@@ -276,5 +302,35 @@
 
   .primary:hover {
     background: white;
+  }
+
+  .warning-banner,
+  .hardware-banner {
+    display: flex;
+    gap: var(--space-3);
+    align-items: flex-start;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    margin: 0 0 var(--space-4);
+    font-size: var(--font-size-sm);
+    line-height: var(--leading-relaxed);
+  }
+
+  .warning-banner {
+    background: var(--color-warning-soft, #fff7ed);
+    border: 1px solid var(--color-warning-border, #fed7aa);
+    color: var(--color-warning, #9a3412);
+  }
+
+  .hardware-banner {
+    background: var(--color-success-soft);
+    border: 1px solid var(--color-success-border);
+    color: var(--color-success);
+  }
+
+  .warning-banner strong,
+  .hardware-banner strong {
+    display: block;
+    margin-bottom: 2px;
   }
 </style>

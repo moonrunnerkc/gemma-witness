@@ -13,7 +13,7 @@
   <img alt="Rust 1.80+" src="https://img.shields.io/badge/rust-1.80%2B-1a2548?style=flat-square&logo=rust&logoColor=ffffff">
   <img alt="Node 22" src="https://img.shields.io/badge/node-22.x-1a2548?style=flat-square&logo=node.js&logoColor=ffffff">
   <img alt="Tauri 2" src="https://img.shields.io/badge/tauri-2.x-1a2548?style=flat-square&logo=tauri&logoColor=ffffff">
-  <img alt="Status: pre-release" src="https://img.shields.io/badge/status-pre--release-a78bfa?style=flat-square">
+  <img alt="Status: beta" src="https://img.shields.io/badge/status-beta-3b82f6?style=flat-square">
 </p>
 
 <p align="center">
@@ -48,7 +48,7 @@ That is what Gemma.Witness exists for. The rest of this document explains how.
 
 ## Status
 
-This is a pre-release research project. The full capture and verification chain is designed to run offline, but the current implementation still has important trust and portability limitations. Read the [limitations](#current-limitations) section before relying on it for real-world evidence handling.
+This is a beta. The full capture and verification chain runs offline and the seal path on macOS prefers the Apple Secure Enclave so the signing key never leaves hardware. Linux and Windows still sign with a software keychain key today (Linux TPM 2.0 and Windows NCrypt backends are tracked; the trait surface for them is already in place). Read the [limitations](#current-limitations) section before relying on it for real-world evidence handling.
 
 ## The use case it leads with
 
@@ -382,12 +382,12 @@ These are real limitations in the current implementation.
 
 ### Trust model limitations
 
-- Keys are software-held in the OS keychain.
-- No TPM, Secure Enclave, or hardware attestation backend is wired up today. Signing flows through the [`KeyProvider`](crates/witness-core/src/key_provider.rs) trait, so a Secure-Enclave or TPM provider can be added without rewriting the seal path. The `hardware-keys` Cargo feature is reserved for that work and fails the build until a real backend lands, to prevent a binary from claiming hardware backing it does not deliver.
-- No external certificate authority or transparency log.
-- Verification currently operates as a TOFU-style trust model.
+- **macOS**: signing keys live in the Apple Secure Enclave (ECDSA P-256, non-extractable). The seal command renders a "Hardware-backed signature" banner when this path is in effect, and falls back to the software OS-keychain Ed25519 path with a visible "Software-only signature" warning if the SEP is unreachable.
+- **Linux**: TPM 2.0 backend is tracked but not yet wired up; the seal path falls back to a software OS-keychain Ed25519 key with a visible warning.
+- **Windows**: NCrypt + platform crypto provider is tracked but not yet wired up; no Windows host is available to the maintainer for live bring-up, so this backend remains a stretch goal.
+- No external certificate authority or transparency log; verification still operates as a TOFU-style trust model. WS5 is the workstream that closes this gap (signer registry + Rekor).
 
-A compromised user account can sign arbitrary bundles.
+A compromised user account can sign arbitrary bundles on any of the above paths, hardware-backed or not. Hardware backing proves *which device* signed, not *who held it*.
 
 ### Fingerprint provenance
 
