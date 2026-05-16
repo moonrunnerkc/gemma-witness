@@ -16,8 +16,6 @@
   <img alt="Status: pre-release" src="https://img.shields.io/badge/status-pre--release-a78bfa?style=flat-square">
 </p>
 
-<video src="https://github.com/user-attachments/assets/0276926e-2bd4-4187-8f0d-814119e2762f" controls width="100%"></video>
-
 [Watch the demo video](https://github.com/user-attachments/assets/0276926e-2bd4-4187-8f0d-814119e2762f)
 
 ---
