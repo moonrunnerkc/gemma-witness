@@ -1,0 +1,25 @@
+[package]
+name = "sign-fingerprints"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Recomputes and verifies the inference/fingerprints/ registry envelope. CI signs the envelope with cosign sign-blob between recompute and verify-signature."
+
+[[bin]]
+name = "sign-fingerprints"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+witness-fingerprint-verify = { path = "../../crates/witness-fingerprint-verify" }
+
+[dev-dependencies]
+tempfile = "3.12"
+assert_cmd = "2.0"
+predicates = "3.1"

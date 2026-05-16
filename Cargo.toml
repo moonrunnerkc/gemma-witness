@@ -11,6 +11,7 @@ members = [
     "apps/capture/src-tauri",
     "tools/seed-fingerprints",
     "tools/check-pinned-binary",
+    "tools/sign-fingerprints",
 ]
 
 [workspace.package]
