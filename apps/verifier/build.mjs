@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as url from "node:url";
+import { verifyRegistry } from "./build-verify-registry.mjs";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -9,10 +10,23 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
  *
  * Inlines all JS (bundled via esbuild), CSS, and known-fingerprints.json into
  * one self-contained HTML file at dist/verify.html.
+ *
+ * Before bundling, the inference/fingerprints/ registry envelope is
+ * verified against its cosign Sigstore bundle. A signature failure
+ * aborts the build with a non-zero exit; a placeholder envelope emits a
+ * loud warning and proceeds (matching the Rust build.rs behavior in
+ * crates/witness-fingerprints/build.rs).
  */
 async function build() {
   const outDir = path.join(__dirname, "dist");
   fs.mkdirSync(outDir, { recursive: true });
+
+  // Build-time registry verification. The result is inlined into the
+  // HTML as __REGISTRY_VERIFICATION__ so the runtime can surface a
+  // "Registry signature" row to the user without redoing the Sigstore
+  // dance in the browser. The trust chain is transferred via
+  // SHASUMS256.txt covering verify.html.
+  const registryVerification = await verifyRegistry();
 
   // Bundle TypeScript entry point into a single JS string.
   const esbuild = await import("esbuild");
@@ -52,6 +66,10 @@ async function build() {
   html = html.replace(
     "/*INLINE_TRUSTED_SIGNERS*/ null",
     trustedJson
+  );
+  html = html.replace(
+    "/*INLINE_REGISTRY_VERIFICATION*/ null",
+    JSON.stringify(registryVerification, null, 2),
   );
   html = html.replace("/*INLINE_JS*/", jsBundle);
 

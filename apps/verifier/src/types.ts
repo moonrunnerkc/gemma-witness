@@ -145,6 +145,35 @@ export interface TrustedSigners {
   signers: TrustedSigner[];
 }
 
+/** One file covered by the registry envelope. */
+export interface RegistryCoveredFile {
+  path: string;
+  sha256: string;
+}
+
+/**
+ * Build-time Sigstore verification result for the fingerprint registry.
+ * Inlined by apps/verifier/build.mjs from
+ * `inference/fingerprints/registry-manifest.json` and
+ * `registry-manifest.sigstore`. Surfaced at runtime via the
+ * "Registry signature" check row. The trust chain transfer: the
+ * verifier HTML is signed by SHASUMS256.txt via cosign keyless, so a
+ * user who pins the maintainer's OIDC identity transitively trusts
+ * this value without redoing the Sigstore dance in the browser.
+ */
+export type RegistryVerification =
+  | {
+      placeholder: true;
+      covered_files: RegistryCoveredFile[];
+    }
+  | {
+      placeholder: false;
+      covered_files: RegistryCoveredFile[];
+      identity: string;
+      issuer: string;
+      signed_at_utc: string;
+    };
+
 /** Outcome of a single verification check. */
 export interface CheckOutcome {
   name: string;

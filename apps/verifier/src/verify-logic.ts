@@ -8,6 +8,7 @@ import { verifyAssetHashes } from "./verify-asset-hashes";
 import { verifyModelFingerprint } from "./verify-model-fingerprint";
 import { verifyAmendmentChain } from "./verify-amendment-chain";
 import { verifySignerIdentity } from "./verify-signer-identity";
+import { verifyRegistrySignature } from "./verify-registry-signature";
 import type {
   Manifest,
   SignatureDocument,
@@ -15,6 +16,7 @@ import type {
   CheckOutcome,
   KnownFingerprints,
   TrustedSigners,
+  RegistryVerification,
 } from "./types";
 
 /**
@@ -25,6 +27,10 @@ import type {
  *
  * @param buffer - Raw bytes of the `.witness` ZIP file.
  * @param knownFingerprints - Parsed known-fingerprints envelope.
+ * @param trustedSigners - Parsed trusted-signers envelope.
+ * @param registryVerification - Build-time Sigstore verification result
+ *   for the fingerprint registry. `null` indicates the verifier was built
+ *   without it (treated as a hard failure).
  * @returns A {@link VerificationResult} with per-check outcomes and an overall
  *   `ok` flag.
  */
@@ -32,6 +38,7 @@ export async function verifyBundle(
   buffer: ArrayBuffer,
   knownFingerprints: KnownFingerprints,
   trustedSigners: TrustedSigners,
+  registryVerification: RegistryVerification | null,
 ): Promise<VerificationResult> {
   let manifest: Manifest;
   let sigDoc: SignatureDocument;
@@ -85,6 +92,11 @@ export async function verifyBundle(
 
   const checks: CheckOutcome[] = [];
 
+  checks.push(
+    runCheckSync("Registry signature", () =>
+      verifyRegistrySignature(registryVerification),
+    ),
+  );
   checks.push(await runCheck("Signature valid", () => verifySignature(manifest, sigDoc)));
   checks.push(runCheckSync("Assets untampered", () => verifyAssetHashes(manifest, entries)));
   checks.push(

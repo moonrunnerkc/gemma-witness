@@ -11,7 +11,11 @@ import * as url from "node:url";
 import { unzipSync, zipSync, strFromU8 } from "fflate";
 
 import { verifyBundle } from "../src/verify-logic";
-import type { KnownFingerprints, TrustedSigners } from "../src/types";
+import type {
+  KnownFingerprints,
+  TrustedSigners,
+  RegistryVerification,
+} from "../src/types";
 import { sha256 } from "@noble/hashes/sha2";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
@@ -37,6 +41,27 @@ const KNOWN_EMPTY: KnownFingerprints = {
 const TRUSTED_EMPTY: TrustedSigners = {
   schema_version: 1,
   signers: [],
+};
+
+/**
+ * A passing build-time registry-verification result. In production the
+ * verifier embeds the actual result of running `@sigstore/verify`
+ * against the cosign bundle; these tests synthesize the success shape
+ * so the registry-signature row passes by default. The
+ * REGISTRY_PLACEHOLDER constant covers the failing path.
+ */
+const REGISTRY_VERIFIED: RegistryVerification = {
+  placeholder: false,
+  covered_files: [{ path: "index.json", sha256: "0".repeat(64) }],
+  identity:
+    "https://github.com/moonrunnerkc/gemma-witness/.github/workflows/release.yml@refs/tags/v0.4.0",
+  issuer: "https://token.actions.githubusercontent.com",
+  signed_at_utc: "2026-05-15T00:00:00Z",
+};
+
+const REGISTRY_PLACEHOLDER: RegistryVerification = {
+  placeholder: true,
+  covered_files: [{ path: "index.json", sha256: "0".repeat(64) }],
 };
 
 /**
@@ -107,16 +132,34 @@ function assert(condition: boolean, message: string): void {
   }
 }
 
+/**
+ * Look up a check row by name. Using name-based lookup keeps the tests
+ * stable as new check rows are added or reordered in verify-logic.ts.
+ */
+function rowByName(
+  outcome: { checks: { name: string; passed: boolean; details: string[] }[] },
+  needle: string,
+): { name: string; passed: boolean; details: string[] } {
+  const row = outcome.checks.find((c) => c.name === needle);
+  if (!row) {
+    throw new Error(
+      `no check row named "${needle}"; available rows: ${outcome.checks.map((c) => c.name).join(", ")}`,
+    );
+  }
+  return row;
+}
+
 async function runTests(): Promise<void> {
   // T1: Positive.
   console.log("--- T1 (positive): valid fixture bundle");
   {
-    const outcome = await verifyBundle(readFixture(), KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture());
+    const outcome = await verifyBundle(readFixture(), KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
     assert(outcome.ok, "T1: overall should be OK");
-    assert(outcome.checks.length >= 3, "T1: should have at least 3 checks");
-    assert(outcome.checks[0].passed, "T1: signature row should pass");
-    assert(outcome.checks[1].passed, "T1: asset row should pass");
-    assert(outcome.checks[2].passed, "T1: fingerprint row should pass");
+    assert(outcome.checks.length >= 4, "T1: should have at least 4 checks");
+    assert(rowByName(outcome, "Registry signature").passed, "T1: registry-signature row should pass");
+    assert(rowByName(outcome, "Signature valid").passed, "T1: signature row should pass");
+    assert(rowByName(outcome, "Assets untampered").passed, "T1: asset row should pass");
+    assert(rowByName(outcome, "Model fingerprint known").passed, "T1: fingerprint row should pass");
     console.log("PASS T1");
   }
 
@@ -127,15 +170,16 @@ async function runTests(): Promise<void> {
       const audio = entries.get("assets/audio.wav")!;
       audio[100] ^= 0x42;
     });
-    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture());
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
     assert(!outcome.ok, "T2: overall should fail");
-    assert(outcome.checks[0].passed, "T2: signature row should still pass");
-    assert(!outcome.checks[1].passed, "T2: asset row should fail");
+    assert(rowByName(outcome, "Signature valid").passed, "T2: signature row should still pass");
+    const assetRow = rowByName(outcome, "Assets untampered");
+    assert(!assetRow.passed, "T2: asset row should fail");
     assert(
-      outcome.checks[1].details.some((d) => d.includes("assets/audio.wav")),
+      assetRow.details.some((d) => d.includes("assets/audio.wav")),
       "T2: asset row should name the modified asset",
     );
-    assert(outcome.checks[2].passed, "T2: fingerprint row should still pass");
+    assert(rowByName(outcome, "Model fingerprint known").passed, "T2: fingerprint row should still pass");
     console.log("PASS T2");
   }
 
@@ -155,24 +199,25 @@ async function runTests(): Promise<void> {
         new TextEncoder().encode(JSON.stringify(sigDoc)),
       );
     });
-    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture());
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
     assert(!outcome.ok, "T3: overall should fail");
-    assert(!outcome.checks[0].passed, "T3: signature row should fail");
-    assert(outcome.checks[1].passed, "T3: asset row should still pass");
-    assert(outcome.checks[2].passed, "T3: fingerprint row should still pass");
+    assert(!rowByName(outcome, "Signature valid").passed, "T3: signature row should fail");
+    assert(rowByName(outcome, "Assets untampered").passed, "T3: asset row should still pass");
+    assert(rowByName(outcome, "Model fingerprint known").passed, "T3: fingerprint row should still pass");
     console.log("PASS T3");
   }
 
   // T4: Unknown model fingerprint using an empty known list.
   console.log("--- T4 (negative): unknown model fingerprint (empty registry)");
   {
-    const outcome = await verifyBundle(readFixture(), KNOWN_EMPTY, trustedSignersFromFixture());
+    const outcome = await verifyBundle(readFixture(), KNOWN_EMPTY, trustedSignersFromFixture(), REGISTRY_VERIFIED);
     assert(!outcome.ok, "T4: overall should fail");
-    assert(outcome.checks[0].passed, "T4: signature row should still pass");
-    assert(outcome.checks[1].passed, "T4: asset row should still pass");
-    assert(!outcome.checks[2].passed, "T4: fingerprint row should fail");
+    assert(rowByName(outcome, "Signature valid").passed, "T4: signature row should still pass");
+    assert(rowByName(outcome, "Assets untampered").passed, "T4: asset row should still pass");
+    const fpRow = rowByName(outcome, "Model fingerprint known");
+    assert(!fpRow.passed, "T4: fingerprint row should fail");
     assert(
-      outcome.checks[2].details.some((d) => d.includes("not on the known-good list")),
+      fpRow.details.some((d) => d.includes("not on the known-good list")),
       "T4: fingerprint row should mention known-good list",
     );
     console.log("PASS T4");
@@ -195,14 +240,15 @@ async function runTests(): Promise<void> {
         new TextEncoder().encode(JSON.stringify(manifest)),
       );
     });
-    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture());
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
     assert(!outcome.ok, "T4b: overall should fail");
     // Signature fails because manifest bytes changed without re-signing.
-    assert(!outcome.checks[0].passed, "T4b: signature row should fail (manifest mutated)");
-    assert(outcome.checks[1].passed, "T4b: asset row should still pass");
-    assert(!outcome.checks[2].passed, "T4b: fingerprint row should fail");
+    assert(!rowByName(outcome, "Signature valid").passed, "T4b: signature row should fail (manifest mutated)");
+    assert(rowByName(outcome, "Assets untampered").passed, "T4b: asset row should still pass");
+    const fpRow = rowByName(outcome, "Model fingerprint known");
+    assert(!fpRow.passed, "T4b: fingerprint row should fail");
     assert(
-      outcome.checks[2].details.some((d) => d.includes("not on the known-good list")),
+      fpRow.details.some((d) => d.includes("not on the known-good list")),
       "T4b: fingerprint row should mention known-good list",
     );
     console.log("PASS T4b");
@@ -246,14 +292,14 @@ async function runTests(): Promise<void> {
       "T5: mutated manifest bytes must differ from original; otherwise key reorder did not change the on-disk representation",
     );
 
-    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture());
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
     assert(outcome.ok, "T5: overall should still be OK after key reorder");
     assert(
-      outcome.checks[0].passed,
+      rowByName(outcome, "Signature valid").passed,
       "T5: signature must still pass (canonicalization invariant)",
     );
-    assert(outcome.checks[1].passed, "T5: asset row should still pass");
-    assert(outcome.checks[2].passed, "T5: fingerprint row should still pass");
+    assert(rowByName(outcome, "Assets untampered").passed, "T5: asset row should still pass");
+    assert(rowByName(outcome, "Model fingerprint known").passed, "T5: fingerprint row should still pass");
     console.log("PASS T5");
   }
 
@@ -264,6 +310,7 @@ async function runTests(): Promise<void> {
       readFixture(),
       KNOWN_WITH_FINGERPRINT,
       TRUSTED_EMPTY,
+      REGISTRY_VERIFIED,
     );
     assert(!outcome.ok, "T7: overall should fail when signer is unknown");
     const signerRow = outcome.checks.find((c) =>
@@ -289,6 +336,7 @@ async function runTests(): Promise<void> {
       readFixture(),
       KNOWN_WITH_FINGERPRINT,
       trustedSignersFromFixture(),
+      REGISTRY_VERIFIED,
     );
     const signerRow = outcome.checks.find((c) =>
       c.name.includes("known witness"),
@@ -317,6 +365,7 @@ async function runTests(): Promise<void> {
       mutated,
       KNOWN_WITH_FINGERPRINT,
       trustedSignersFromFixture(),
+      REGISTRY_VERIFIED,
     );
     assert(!outcome.ok, "T9: overall should fail");
     const fpRow = outcome.checks.find((c) => c.name === "Model fingerprint known");
@@ -341,7 +390,7 @@ async function runTests(): Promise<void> {
         new TextEncoder().encode(JSON.stringify(manifest)),
       );
     });
-    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture());
+    const outcome = await verifyBundle(mutated, KNOWN_WITH_FINGERPRINT, trustedSignersFromFixture(), REGISTRY_VERIFIED);
     assert(!outcome.ok, "T6: overall should fail");
     assert(
       outcome.checks.some(
@@ -356,6 +405,45 @@ async function runTests(): Promise<void> {
       "T6: version failure should state 'not supported'",
     );
     console.log("PASS T6");
+  }
+
+  // T10 (WS4): placeholder registry verification fails the registry row.
+  console.log("--- T10 (negative): placeholder registry envelope fails the registry-signature row");
+  {
+    const outcome = await verifyBundle(
+      readFixture(),
+      KNOWN_WITH_FINGERPRINT,
+      trustedSignersFromFixture(),
+      REGISTRY_PLACEHOLDER,
+    );
+    assert(!outcome.ok, "T10: overall should fail when registry is a placeholder");
+    const registryRow = rowByName(outcome, "Registry signature");
+    assert(!registryRow.passed, "T10: registry-signature row should fail");
+    assert(
+      registryRow.details.some((d) => d.includes("placeholder")),
+      "T10: detail should mention the placeholder state",
+    );
+    console.log("PASS T10");
+  }
+
+  // T11 (WS4): null registry verification (verifier built without
+  // build-time check) fails the registry row.
+  console.log("--- T11 (negative): null registry verification (verifier misbuilt) fails the registry-signature row");
+  {
+    const outcome = await verifyBundle(
+      readFixture(),
+      KNOWN_WITH_FINGERPRINT,
+      trustedSignersFromFixture(),
+      null,
+    );
+    assert(!outcome.ok, "T11: overall should fail when registry verification is missing");
+    const registryRow = rowByName(outcome, "Registry signature");
+    assert(!registryRow.passed, "T11: registry-signature row should fail");
+    assert(
+      registryRow.details.some((d) => d.includes("rebuild")),
+      "T11: detail should ask the user to rebuild",
+    );
+    console.log("PASS T11");
   }
 
   console.log("\n=== ALL E2E TESTS PASSED ===");

@@ -1,5 +1,9 @@
 import { verifyBundle as verifyBundleLogic } from "./src/verify-logic";
-import type { KnownFingerprints, TrustedSigners } from "./src/types";
+import type {
+  KnownFingerprints,
+  TrustedSigners,
+  RegistryVerification,
+} from "./src/types";
 import { renderResult } from "./src/render-result";
 
 // re-export for test harnesses and programmatic use
@@ -70,9 +74,11 @@ async function handleFile(file: File, results: HTMLElement): Promise<void> {
 
   let known: KnownFingerprints;
   let trusted: TrustedSigners;
+  let registry: RegistryVerification | null;
   try {
     known = loadKnownFingerprints();
     trusted = loadTrustedSigners();
+    registry = loadRegistryVerification();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     renderResult(results, {
@@ -85,7 +91,7 @@ async function handleFile(file: File, results: HTMLElement): Promise<void> {
   }
 
   try {
-    const result = await verifyBundleLogic(buffer, known, trusted);
+    const result = await verifyBundleLogic(buffer, known, trusted, registry);
     renderResult(results, result);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -126,6 +132,26 @@ function loadTrustedSigners(): TrustedSigners {
     );
   }
   return raw as TrustedSigners;
+}
+
+function loadRegistryVerification(): RegistryVerification | null {
+  const raw: unknown = (window as unknown as Record<string, unknown>)
+    .__REGISTRY_VERIFICATION__;
+  if (raw === null || raw === undefined) {
+    return null;
+  }
+  if (typeof raw !== "object") {
+    throw new Error(
+      "registry verification data is malformed in the verifier bundle. rebuild via apps/verifier/build.mjs.",
+    );
+  }
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.placeholder !== "boolean" || !Array.isArray(obj.covered_files)) {
+    throw new Error(
+      "registry verification data is missing required fields. rebuild via apps/verifier/build.mjs.",
+    );
+  }
+  return raw as RegistryVerification;
 }
 
 function escapeHtml(text: string): string {
