@@ -1,23 +1,30 @@
 #!/usr/bin/env bash
 # Starts the mistralrs OpenAI-compatible sidecar in the background.
-# Writes the PID to evidence/day1/mistralrs-sidecar.pid and logs to evidence/day1/mistralrs-sidecar.log.
-# Waits until the server is reachable on the configured port before returning.
+#
+# Trust gate (audit finding S-7):
+#   The mistralrs binary on $PATH MUST hash-match an entry in PINNED.json
+#   for the current target triple. Enforcement is delegated to the
+#   `check-pinned-binary` tool, which is the audited authority on the gate
+#   logic and is covered by its own test suite.
 #
 # Usage: ./start.sh
 # Environment:
-#   GW_SIDECAR_MODEL  default google/gemma-4-E4B-it
-#   GW_SIDECAR_PORT   default 8080
-#   GW_SIDECAR_HOST   default 127.0.0.1
+#   GW_SIDECAR_MODEL              default google/gemma-4-E4B-it
+#   GW_SIDECAR_PORT               default 8080
+#   GW_SIDECAR_HOST               default 127.0.0.1 (loopback enforced)
+#   WITNESS_MISTRALRS_LOCAL_DEV   when set to 1, soft gate failures
+#                                 (placeholder pin, unknown triple, hash
+#                                 mismatch) downgrade to a loud warning. The
+#                                 release-gate live e2e MUST NOT set this.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="${WITNESS_REPO_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+PINNED_PATH="${WITNESS_PINNED_PATH_OVERRIDE:-$SCRIPT_DIR/PINNED.json}"
 MODEL="${GW_SIDECAR_MODEL:-google/gemma-4-E4B-it}"
 PORT="${GW_SIDECAR_PORT:-8080}"
 HOST="${GW_SIDECAR_HOST:-127.0.0.1}"
-# Pinned mistralrs version. Update this in lockstep with the --rev pin in
-# inference/mistralrs-sidecar/README.md when bumping the audited release.
-MISTRALRS_PINNED_VERSION="${MISTRALRS_PINNED_VERSION:-mistralrs 0.7.0}"
+LOCAL_DEV="${WITNESS_MISTRALRS_LOCAL_DEV:-0}"
 
 case "$HOST" in
   127.0.0.1|::1|localhost) ;;
@@ -32,9 +39,45 @@ if ! command -v mistralrs >/dev/null 2>&1; then
   exit 65
 fi
 
-INSTALLED_VERSION="$(mistralrs --version 2>/dev/null | head -n1 || true)"
-if [ "$INSTALLED_VERSION" != "$MISTRALRS_PINNED_VERSION" ]; then
-  echo "installed mistralrs version \"$INSTALLED_VERSION\" does not match the pinned value \"$MISTRALRS_PINNED_VERSION\". sealing a bundle against an unpinned binary lets a malicious mistralrs release ship attacker-controlled transcripts to your signed manifest. reinstall via the cargo install --rev command in inference/mistralrs-sidecar/README.md, or set MISTRALRS_PINNED_VERSION explicitly after auditing the new release." >&2
+if [ ! -f "$PINNED_PATH" ]; then
+  echo "missing $PINNED_PATH. the mistralrs sidecar refuses to launch without a hash-pin manifest; restore it from git and retry." >&2
+  exit 67
+fi
+
+# Resolve check-pinned-binary. Prefer the workspace target/release build, then
+# target/debug, then any copy on PATH. Build it if it's missing entirely so
+# the gate is never skipped silently because the tool wasn't compiled.
+resolve_check_tool() {
+  for candidate in \
+      "$REPO_ROOT/target/release/check-pinned-binary" \
+      "$REPO_ROOT/target/debug/check-pinned-binary"; do
+    if [ -x "$candidate" ]; then
+      echo "$candidate"
+      return
+    fi
+  done
+  if command -v check-pinned-binary >/dev/null 2>&1; then
+    command -v check-pinned-binary
+    return
+  fi
+  return 1
+}
+
+CHECK_TOOL="$(resolve_check_tool || true)"
+if [ -z "$CHECK_TOOL" ]; then
+  echo "check-pinned-binary not built. run \`cargo build --release -p check-pinned-binary\` and retry. this tool enforces the SHA-256 pin on the mistralrs binary; the sidecar will not launch without it." >&2
+  exit 68
+fi
+
+MISTRALRS_BIN="$(command -v mistralrs)"
+
+CHECK_ARGS=(--pinned "$PINNED_PATH" --binary "$MISTRALRS_BIN")
+if [ "$LOCAL_DEV" = "1" ]; then
+  CHECK_ARGS+=(--allow-local-dev)
+fi
+
+if ! "$CHECK_TOOL" "${CHECK_ARGS[@]}"; then
+  echo "check-pinned-binary refused launch. see message above. fix the pin or, for local development only, export WITNESS_MISTRALRS_LOCAL_DEV=1." >&2
   exit 66
 fi
 

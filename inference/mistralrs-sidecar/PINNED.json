@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "_comment": "Pinned mistral.rs build manifest. Populated by .github/workflows/release.yml on each tagged release. The capture path refuses to launch a mistral.rs binary whose SHA-256 is not listed under binaries[] for the host's target triple. Audit finding S-7: a soft pin (--version string equality) is not sufficient because a malicious mistral.rs binary on $PATH could report any version string. Hash-pinning closes that gap.",
+  "upstream_repo": "https://github.com/EricLBuehler/mistral.rs",
+  "upstream_commit": "0000000000000000000000000000000000000000",
+  "version_string": "mistralrs 0.7.0",
+  "cargo_install_args": [
+    "install",
+    "--locked",
+    "--git",
+    "https://github.com/EricLBuehler/mistral.rs",
+    "--rev",
+    "0000000000000000000000000000000000000000",
+    "mistralrs-server"
+  ],
+  "placeholder": true,
+  "placeholder_reason": "upstream_commit has not been pinned to a real audited mistral.rs commit yet. Until release.yml replaces this with a verified commit and populates binaries[] with built-binary hashes, start.sh refuses to launch in strict mode (WITNESS_MISTRALRS_LOCAL_DEV=1 bypasses for local development).",
+  "binaries": []
+}
