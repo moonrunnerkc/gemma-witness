@@ -238,6 +238,28 @@ pub fn verify_consistency(
 
 pub mod signature;
 
+/// Convenience entry point used by `crates/witness-fingerprints/build.rs`
+/// and by the upcoming verifier-side runtime check. Loads the envelope,
+/// runs the content gate, and reports whether the envelope is currently
+/// a placeholder. Callers are expected to:
+///
+/// - Treat `Err(_)` as a hard failure (panic in build scripts, hard
+///   error in user-facing surfaces).
+/// - Treat `Ok(true)` as a placeholder warning surface.
+/// - Treat `Ok(false)` as a fully-signed envelope; the signature gate
+///   itself runs separately via [`signature::verify_signature`].
+///
+/// # Errors
+/// - [`VerifyError::Io`] if the envelope cannot be read.
+/// - [`VerifyError::ManifestParse`] / [`VerifyError::ManifestSchemaMismatch`]
+///   on a malformed envelope.
+/// - Any [`VerifyError`] variant raised by [`verify_consistency`].
+pub fn enforce_for_build(registry_dir: &Path) -> Result<bool, VerifyError> {
+    let manifest = load_manifest(registry_dir)?;
+    verify_consistency(registry_dir, &manifest)?;
+    Ok(manifest.placeholder)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
