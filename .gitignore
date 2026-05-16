@@ -36,6 +36,7 @@ apps/capture/dist/
 LIMITATIONS-RESOLUTION.md
 SECURITY-AUDIT.md
 DEMO-VIDEO.md
+ROADMAP.md
 
 # Demo bundle artifacts. The journal, screenshots, and CHECKSUMS.txt under
 # evidence/demo-*/ are committed for reproducibility; the .witness binaries
