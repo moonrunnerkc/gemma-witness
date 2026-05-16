@@ -9,6 +9,7 @@
     | "alert"
     | "arrow-right"
     | "copy"
+    | "folder"
     | "key"
     | "circle";
 </script>
@@ -56,6 +57,8 @@
   {:else if name === "copy"}
     <rect x="9" y="9" width="11" height="11" rx="2" />
     <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+  {:else if name === "folder"}
+    <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
   {:else if name === "key"}
     <circle cx="8" cy="14" r="4" />
     <path d="m11 11 9-9M16 6l3 3" />

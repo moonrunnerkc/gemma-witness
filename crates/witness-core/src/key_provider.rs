@@ -17,8 +17,13 @@
 //! spec bumps to `manifest_version=2` with a tagged `signer.algorithm` field.
 //! Today the only allowed value is `ed25519`, matching the existing schema.
 
+use std::sync::Mutex;
+
+use ed25519_dalek::SigningKey;
+
 use crate::error::WitnessCoreError;
-use crate::keystore::{load_or_create_device_key, sign_with_device_key, DevicePublicKey};
+use crate::keystore::load_or_create_signing_key;
+use crate::signing::{encode_public_key_pem, key_id, sign};
 
 /// Wire-level signing algorithm. Mirrors `signer.algorithm` in the manifest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,31 +77,50 @@ pub trait KeyProvider: Send + Sync {
 /// software-only; the README's "Trust model limitations" section accurately
 /// describes the threat model. Future hardware-backed providers will live
 /// next to this one and the seal command will pick at runtime.
-#[derive(Debug, Default, Clone)]
-pub struct SoftwareEd25519Provider;
+#[derive(Debug, Default)]
+pub struct SoftwareEd25519Provider {
+    cached_key: Mutex<Option<SigningKey>>,
+}
 
 impl SoftwareEd25519Provider {
-    pub const fn new() -> Self {
-        Self
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn with_key<T>(
+        &self,
+        f: impl FnOnce(&SigningKey) -> Result<T, WitnessCoreError>,
+    ) -> Result<T, WitnessCoreError> {
+        let mut guard = self
+            .cached_key
+            .lock()
+            .map_err(|err| WitnessCoreError::Keyring {
+                detail: format!("device key cache lock poisoned: {err}"),
+            })?;
+        if guard.is_none() {
+            *guard = Some(load_or_create_signing_key()?);
+        }
+        let key = guard.as_ref().ok_or_else(|| WitnessCoreError::Keyring {
+            detail: "device key cache was empty after load".to_string(),
+        })?;
+        f(key)
     }
 }
 
 impl KeyProvider for SoftwareEd25519Provider {
     fn load_or_create_public(&self) -> Result<PublicKeyHandle, WitnessCoreError> {
-        let DevicePublicKey {
-            public_key_pem,
-            key_id,
-        } = load_or_create_device_key()?;
-        Ok(PublicKeyHandle {
-            algorithm: SigningAlgorithm::Ed25519,
-            public_key_pem,
-            key_id,
+        self.with_key(|key| {
+            let verifying = key.verifying_key();
+            Ok(PublicKeyHandle {
+                algorithm: SigningAlgorithm::Ed25519,
+                public_key_pem: encode_public_key_pem(&verifying)?,
+                key_id: key_id(&verifying),
+            })
         })
     }
 
     fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, WitnessCoreError> {
-        let signature = sign_with_device_key(payload)?;
-        Ok(signature.to_bytes().to_vec())
+        self.with_key(|key| Ok(sign(key, payload).to_bytes().to_vec()))
     }
 
     fn algorithm(&self) -> SigningAlgorithm {

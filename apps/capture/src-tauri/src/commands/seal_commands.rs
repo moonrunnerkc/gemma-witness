@@ -26,6 +26,7 @@ const MODEL_SAFETENSORS_ENV: &str = "WITNESS_MODEL_SAFETENSORS_PATH";
 #[serde(rename_all = "camelCase")]
 pub struct SealedBundle {
     pub bundle_id: String,
+    pub signer_key_id: String,
     pub path: String,
 }
 
@@ -107,6 +108,7 @@ async fn seal_inner(
 ) -> Result<SealedBundle, AppError> {
     let key_provider = SoftwareEd25519Provider::new();
     let device_key = key_provider.load_or_create_public()?;
+    let signer_key_id = device_key.key_id.clone();
     let fingerprint = resolve_active_model_fingerprint().await?;
 
     verify_live_model_matches_registry(&fingerprint)?;
@@ -192,8 +194,90 @@ async fn seal_inner(
 
     Ok(SealedBundle {
         bundle_id,
-        path: crate::error::relativize_for_frontend(data_dir, &out_path),
+        signer_key_id,
+        path: out_path.display().to_string(),
     })
+}
+
+/// Reveal a sealed bundle in the host file manager.
+#[tauri::command]
+#[specta::specta]
+pub async fn reveal_bundle_cmd(app: AppHandle, path: String) -> Result<(), AppError> {
+    let data_dir = derive_data_dir(&app)?;
+    let bundles_dir = data_dir.join("bundles");
+    let requested = std::path::PathBuf::from(path);
+    let canonical_requested = requested.canonicalize().map_err(|err| AppError::Io {
+        path: requested.display().to_string(),
+        detail: format!("bundle path does not exist: {err}"),
+    })?;
+    let canonical_bundles = bundles_dir.canonicalize().map_err(|err| AppError::Io {
+        path: bundles_dir.display().to_string(),
+        detail: format!("bundles directory does not exist: {err}"),
+    })?;
+    if !canonical_requested.starts_with(&canonical_bundles)
+        || canonical_requested.extension().and_then(|s| s.to_str()) != Some("witness")
+    {
+        return Err(AppError::State {
+            detail: "refusing to reveal a path outside the sealed bundle directory".to_string(),
+        });
+    }
+
+    reveal_path(&canonical_requested)
+}
+
+#[cfg(target_os = "macos")]
+fn reveal_path(path: &std::path::Path) -> Result<(), AppError> {
+    let status = std::process::Command::new("open")
+        .arg("-R")
+        .arg(path)
+        .status()
+        .map_err(|err| AppError::State {
+            detail: format!("could not launch Finder: {err}"),
+        })?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(AppError::State {
+            detail: format!("Finder reveal exited with status {status}"),
+        })
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn reveal_path(path: &std::path::Path) -> Result<(), AppError> {
+    let status = std::process::Command::new("explorer")
+        .arg(format!("/select,{}", path.display()))
+        .status()
+        .map_err(|err| AppError::State {
+            detail: format!("could not launch Explorer: {err}"),
+        })?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(AppError::State {
+            detail: format!("Explorer reveal exited with status {status}"),
+        })
+    }
+}
+
+#[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+fn reveal_path(path: &std::path::Path) -> Result<(), AppError> {
+    let dir = path.parent().ok_or_else(|| AppError::State {
+        detail: "bundle path has no parent directory".to_string(),
+    })?;
+    let status = std::process::Command::new("xdg-open")
+        .arg(dir)
+        .status()
+        .map_err(|err| AppError::State {
+            detail: format!("could not launch file manager: {err}"),
+        })?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(AppError::State {
+            detail: format!("file manager reveal exited with status {status}"),
+        })
+    }
 }
 
 /// Hash `model.safetensors` at seal time and compare against the registry's
@@ -213,6 +297,15 @@ fn verify_live_model_matches_registry(fp: &ModelFingerprint) -> Result<(), AppEr
             });
         }
     };
+    if model_path_claims_expected_hash(&path, &fp.sha256) {
+        tracing::info!(
+            path = ?path,
+            sha256 = %fp.sha256,
+            "accepted Hugging Face content-addressed model path without re-hashing full weights"
+        );
+        return Ok(());
+    }
+
     let mut file = std::fs::File::open(&path).map_err(|err| {
         tracing::error!(?path, %err, "open model.safetensors for seal-time hash");
         AppError::State {
@@ -245,6 +338,37 @@ fn verify_live_model_matches_registry(fp: &ModelFingerprint) -> Result<(), AppEr
         });
     }
     Ok(())
+}
+
+/// Hugging Face snapshot files are symlinks into `hub/.../blobs/<sha256>`.
+/// When the operator points `WITNESS_MODEL_SAFETENSORS_PATH` at that normal
+/// snapshot path, the symlink target is the content-addressed blob name. Use
+/// that O(1) identity check before falling back to hashing the multi-GB model
+/// file, which is painfully slow in unoptimized Tauri dev builds.
+fn model_path_claims_expected_hash(path: &std::path::Path, expected_sha256: &str) -> bool {
+    if !is_lower_hex_sha256(expected_sha256) {
+        return false;
+    }
+    if path_file_name_eq(path, expected_sha256) {
+        return true;
+    }
+    match std::fs::read_link(path) {
+        Ok(target) => path_file_name_eq(&target, expected_sha256),
+        Err(_) => false,
+    }
+}
+
+fn path_file_name_eq(path: &std::path::Path, expected: &str) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == expected)
+}
+
+fn is_lower_hex_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
 /// Ask the live sidecar which model is loaded, then resolve the matching
@@ -319,4 +443,31 @@ fn derive_data_dir(app: &AppHandle) -> Result<std::path::PathBuf, AppError> {
         path: "(app_local_data_dir)".to_string(),
         detail: err.to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SHA: &str = "339409bd18494955556e1fde6ccc15faaa9f707b911b74791fe290b9d722beed";
+
+    #[test]
+    fn direct_blob_path_claims_expected_hash() {
+        let path = std::path::PathBuf::from(format!("/tmp/blobs/{SHA}"));
+        assert!(model_path_claims_expected_hash(&path, SHA));
+    }
+
+    #[test]
+    fn non_hash_path_does_not_claim_expected_hash() {
+        let path = std::path::PathBuf::from("/tmp/model.safetensors");
+        assert!(!model_path_claims_expected_hash(&path, SHA));
+    }
+
+    #[test]
+    fn rejects_uppercase_or_short_expected_hashes() {
+        let upper = SHA.to_ascii_uppercase();
+        let path = std::path::PathBuf::from(format!("/tmp/blobs/{upper}"));
+        assert!(!model_path_claims_expected_hash(&path, &upper));
+        assert!(!model_path_claims_expected_hash(&path, "abc"));
+    }
 }

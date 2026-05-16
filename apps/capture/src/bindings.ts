@@ -14,6 +14,16 @@ export const commands = {
 	pickImagesCmd: () => typedError<PickedImages, AppError>(__TAURI_INVOKE("pick_images_cmd")),
 	runInferenceCmd: () => typedError<InferenceSummary, AppError>(__TAURI_INVOKE("run_inference_cmd")),
 	sealBundleCmd: () => typedError<SealedBundle, AppError>(__TAURI_INVOKE("seal_bundle_cmd")),
+	/**  Reveal a sealed bundle in the host file manager. */
+	revealBundleCmd: (path: string) => typedError<null, AppError>(__TAURI_INVOKE("reveal_bundle_cmd", { path })),
+	/**
+	 *  Wipe per-capture working files: the audio recording, the reasoning
+	 *  trace, the intermediate bundle (if any), and the staged images.
+	 *  Closes audit finding T-6.
+	 * 
+	 *  Idempotent: missing directories are not an error.
+	 */
+	discardCaptureCmd: () => typedError<null, AppError>(__TAURI_INVOKE("discard_capture_cmd")),
 };
 
 /* Types */
@@ -23,22 +33,31 @@ export const commands = {
  */
 export type AppError = ({ NoAudioDevice: {
 	detail: string,
-} }) & { AudioStream?: never; Core?: never; ImageRejected?: never; Inference?: never; Io?: never; State?: never; UnsupportedAudioConfig?: never } | ({ UnsupportedAudioConfig: {
+} }) & { AlreadyInProgress?: never; AudioStream?: never; Core?: never; ImageRejected?: never; Inference?: never; Io?: never; State?: never; UnsupportedAudioConfig?: never } | ({ UnsupportedAudioConfig: {
 	detail: string,
-} }) & { AudioStream?: never; Core?: never; ImageRejected?: never; Inference?: never; Io?: never; NoAudioDevice?: never; State?: never } | ({ AudioStream: {
+} }) & { AlreadyInProgress?: never; AudioStream?: never; Core?: never; ImageRejected?: never; Inference?: never; Io?: never; NoAudioDevice?: never; State?: never } | ({ AudioStream: {
 	detail: string,
-} }) & { Core?: never; ImageRejected?: never; Inference?: never; Io?: never; NoAudioDevice?: never; State?: never; UnsupportedAudioConfig?: never } | "NoActiveRecording" | "RecordingAlreadyActive" | "NoCapturedAudio" | ({ Io: {
+} }) & { AlreadyInProgress?: never; Core?: never; ImageRejected?: never; Inference?: never; Io?: never; NoAudioDevice?: never; State?: never; UnsupportedAudioConfig?: never } | "NoActiveRecording" | "RecordingAlreadyActive" | "NoCapturedAudio" | 
+/**
+ *  File-IO error. `Display` strips absolute paths down to a path relative
+ *  to `app_local_data_dir` so the user-facing message cannot leak
+ *  `/Users/<name>/Library/Application Support/...`. Absolute paths
+ *  remain available to `tracing::error!` via [`Self::log_path`].
+ */
+({ Io: {
 	path: string,
 	detail: string,
-} }) & { AudioStream?: never; Core?: never; ImageRejected?: never; Inference?: never; NoAudioDevice?: never; State?: never; UnsupportedAudioConfig?: never } | ({ ImageRejected: {
+} }) & { AlreadyInProgress?: never; AudioStream?: never; Core?: never; ImageRejected?: never; Inference?: never; NoAudioDevice?: never; State?: never; UnsupportedAudioConfig?: never } | ({ ImageRejected: {
 	detail: string,
-} }) & { AudioStream?: never; Core?: never; Inference?: never; Io?: never; NoAudioDevice?: never; State?: never; UnsupportedAudioConfig?: never } | ({ Inference: {
+} }) & { AlreadyInProgress?: never; AudioStream?: never; Core?: never; Inference?: never; Io?: never; NoAudioDevice?: never; State?: never; UnsupportedAudioConfig?: never } | ({ Inference: {
 	detail: string,
-} }) & { AudioStream?: never; Core?: never; ImageRejected?: never; Io?: never; NoAudioDevice?: never; State?: never; UnsupportedAudioConfig?: never } | ({ Core: {
+} }) & { AlreadyInProgress?: never; AudioStream?: never; Core?: never; ImageRejected?: never; Io?: never; NoAudioDevice?: never; State?: never; UnsupportedAudioConfig?: never } | ({ Core: {
 	detail: string,
-} }) & { AudioStream?: never; ImageRejected?: never; Inference?: never; Io?: never; NoAudioDevice?: never; State?: never; UnsupportedAudioConfig?: never } | ({ State: {
+} }) & { AlreadyInProgress?: never; AudioStream?: never; ImageRejected?: never; Inference?: never; Io?: never; NoAudioDevice?: never; State?: never; UnsupportedAudioConfig?: never } | ({ State: {
 	detail: string,
-} }) & { AudioStream?: never; Core?: never; ImageRejected?: never; Inference?: never; Io?: never; NoAudioDevice?: never; UnsupportedAudioConfig?: never };
+} }) & { AlreadyInProgress?: never; AudioStream?: never; Core?: never; ImageRejected?: never; Inference?: never; Io?: never; NoAudioDevice?: never; UnsupportedAudioConfig?: never } | ({ AlreadyInProgress: {
+	operation: string,
+} }) & { AudioStream?: never; Core?: never; ImageRejected?: never; Inference?: never; Io?: never; NoAudioDevice?: never; State?: never; UnsupportedAudioConfig?: never } | "SidecarUnauthenticated";
 
 export type InferenceSummary = {
 	transcript: string,
@@ -72,6 +91,7 @@ export type RecordingStarted = {
 
 export type SealedBundle = {
 	bundleId: string,
+	signerKeyId: string,
 	path: string,
 };
 

@@ -1,5 +1,13 @@
 {
   "schema_version": 1,
   "description": "Registry of known witness signers. Each entry pins a signer's key_id (lowercase hex SHA-256 of the raw 32-byte public key) and the SHA-256 of the PEM-encoded public-key bytes. Verifiers display the entry's label and surface a failing check row when the bundle's signer is not in this list. Add entries by recording the signer's public-key fingerprint out-of-band (e.g., a published author's profile page, an editor's signed announcement).",
-  "signers": []
+  "signers": [
+    {
+      "key_id": "6dac93251b6b7b6a5e0d03a74b457ade29d3c99594dc34b0cd3c328bd82cc2fc",
+      "public_key_pem_sha256": "2caf0e7e33e4904c41a0273a1a13293a85d240b46ebef6b5a35bdc00c8aeb3c7",
+      "label": "Brad MacBook Pro M5 demo witness",
+      "added_at": "2026-05-15T23:37:35Z",
+      "note": "Pinned for the local demo verifier after confirming this device produced the sealed bundle."
+    }
+  ]
 }

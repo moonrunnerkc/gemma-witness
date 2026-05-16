@@ -1,10 +1,15 @@
 //! Regression tests for the sidecar trust-boundary hardening landed under
 //! audit findings T-7 (token), I-1 (response-size cap), and I-3 (loopback).
 
+use std::sync::LazyLock;
+
+use tokio::sync::Mutex;
 use witness_inference::{
     assert_endpoint_is_loopback, fetch_active_model_id_default, handshake, InferenceError,
 };
 use witness_test_sidecar::{start, FakeConfig};
+
+static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[test]
 fn with_endpoint_rejects_non_loopback_url() {
@@ -20,6 +25,7 @@ fn with_endpoint_rejects_non_loopback_url() {
 
 #[tokio::test]
 async fn fetch_active_model_id_with_correct_token_succeeds() {
+    let _env_guard = ENV_LOCK.lock().await;
     let cfg = FakeConfig {
         required_token: Some("test-token-deadbeef".to_string()),
         ..FakeConfig::default()
@@ -41,7 +47,32 @@ async fn fetch_active_model_id_with_correct_token_succeeds() {
 }
 
 #[tokio::test]
+async fn fetch_active_model_id_prefers_default_when_sidecar_lists_cached_models() {
+    let _env_guard = ENV_LOCK.lock().await;
+    let cfg = FakeConfig {
+        listed_model_ids: Some(vec![
+            "mlx-community/Qwen3.6-35B-A3B-8bit".to_string(),
+            "mlx-community/gemma-4-e4b-it-4bit".to_string(),
+        ]),
+        ..FakeConfig::default()
+    };
+    let server = start(cfg).await.expect("start fake sidecar");
+
+    let prev_model = std::env::var("GW_SIDECAR_MODEL").ok();
+    std::env::remove_var("GW_SIDECAR_MODEL");
+    let result = fetch_active_model_id_default(&server.endpoint).await;
+    if let Some(prev) = prev_model {
+        std::env::set_var("GW_SIDECAR_MODEL", prev);
+    }
+    server.shutdown().await;
+
+    let id = result.expect("default Gemma model should be selected from model list");
+    assert_eq!(id, "mlx-community/gemma-4-e4b-it-4bit");
+}
+
+#[tokio::test]
 async fn fetch_active_model_id_without_token_returns_unauthenticated() {
+    let _env_guard = ENV_LOCK.lock().await;
     // T-7: a sidecar configured with required_token rejects unauthenticated
     // callers with 401. The capture app reads this as a typed BadStatus.
     let cfg = FakeConfig {
@@ -71,6 +102,7 @@ async fn fetch_active_model_id_without_token_returns_unauthenticated() {
 
 #[tokio::test]
 async fn handshake_with_correct_token_round_trips() {
+    let _env_guard = ENV_LOCK.lock().await;
     let cfg = FakeConfig {
         required_token: Some("hs-token-abc".to_string()),
         ..FakeConfig::default()
@@ -93,6 +125,7 @@ async fn handshake_with_correct_token_round_trips() {
 
 #[tokio::test]
 async fn handshake_without_token_fails_closed() {
+    let _env_guard = ENV_LOCK.lock().await;
     let cfg = FakeConfig {
         required_token: Some("hs-token-abc".to_string()),
         ..FakeConfig::default()

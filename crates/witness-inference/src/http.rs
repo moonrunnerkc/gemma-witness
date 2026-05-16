@@ -158,9 +158,12 @@ pub(crate) async fn post_chat(
     })
 }
 
-/// Ask the sidecar which model it is serving by calling `GET /v1/models` and
-/// returning the `id` of the first entry. Used by the seal path to pick the
-/// correct fingerprint registry entry at runtime.
+/// Ask the sidecar which model it is serving by calling `GET /v1/models`.
+///
+/// Some sidecars list every locally cached model rather than the single model
+/// passed at startup. In that case, prefer `GW_SIDECAR_MODEL` when set, then
+/// the compiled default Gemma model. Only fall back to the first row when the
+/// sidecar reports exactly one model.
 pub async fn fetch_active_model_id(
     http: &reqwest::Client,
     endpoint: &str,
@@ -192,20 +195,52 @@ pub async fn fetch_active_model_id(
             body_snippet: String::from_utf8_lossy(&bytes).chars().take(500).collect(),
             source,
         })?;
-    let id = parsed
-        .pointer("/data/0/id")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| InferenceError::BadShape {
-            field: "data[0].id".to_string(),
-            detail: "GET /v1/models returned no model entries. confirm the sidecar is fully loaded before sealing".to_string(),
-        })?;
-    Ok(id.to_string())
+    let ids = model_ids_from_response(&parsed)?;
+    let configured = std::env::var("GW_SIDECAR_MODEL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| DEFAULT_MODEL.to_string());
+    if ids.iter().any(|id| id == &configured) {
+        return Ok(configured);
+    }
+    if ids.len() == 1 {
+        return Ok(ids[0].clone());
+    }
+    Err(InferenceError::BadShape {
+        field: "data[].id".to_string(),
+        detail: format!(
+            "GET /v1/models returned multiple cached models but not the configured model {configured:?}: {}. set GW_SIDECAR_MODEL to the model launched by the sidecar, or start the default Gemma sidecar.",
+            ids.join(", ")
+        ),
+    })
 }
 
 /// Convenience around [`fetch_active_model_id`] that builds a one-shot client.
 pub async fn fetch_active_model_id_default(endpoint: &str) -> Result<String, InferenceError> {
     let http = build_http_client(endpoint)?;
     fetch_active_model_id(&http, endpoint).await
+}
+
+fn model_ids_from_response(parsed: &Value) -> Result<Vec<String>, InferenceError> {
+    let entries = parsed
+        .get("data")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| InferenceError::BadShape {
+            field: "data".to_string(),
+            detail: "GET /v1/models did not return a data array".to_string(),
+        })?;
+    let ids: Vec<String> = entries
+        .iter()
+        .filter_map(|entry| entry.get("id").and_then(|v| v.as_str()))
+        .map(str::to_string)
+        .collect();
+    if ids.is_empty() {
+        return Err(InferenceError::BadShape {
+            field: "data[].id".to_string(),
+            detail: "GET /v1/models returned no model ids. confirm the sidecar is fully loaded before sealing".to_string(),
+        });
+    }
+    Ok(ids)
 }
 
 /// Verify the local sidecar shares the per-launch token by POSTing a random

@@ -16,7 +16,14 @@
   import ErrorBanner from "./lib/error-banner.svelte";
 
   type Envelope<T> = { status: "ok"; data: T } | { status: "error"; error: AppError };
-  type Phase = "idle" | "recording" | "ready" | "running" | "reviewed" | "sealed";
+  type Phase =
+    | "idle"
+    | "recording"
+    | "ready"
+    | "running"
+    | "reviewed"
+    | "sealing"
+    | "sealed";
 
   async function unwrap<T>(promise: Promise<Envelope<T>>): Promise<T> {
     const result = await promise;
@@ -65,14 +72,6 @@
     errorMessage = err instanceof Error ? err.message : String(err);
   }
 
-  async function handleInit(): Promise<void> {
-    try {
-      deviceKeyId = await unwrap(commands.initializeDevice());
-    } catch (err: unknown) {
-      reportError(err);
-    }
-  }
-
   async function handleRecord(): Promise<void> {
     try {
       if (phase === "recording") {
@@ -113,10 +112,13 @@
 
   async function handleSeal(): Promise<void> {
     try {
+      phase = "sealing";
       sealed = await unwrap(commands.sealBundleCmd());
+      deviceKeyId = sealed.signerKeyId;
       phase = "sealed";
     } catch (err: unknown) {
       reportError(err);
+      phase = "reviewed";
     }
   }
 
@@ -135,7 +137,7 @@
       ? "inference"
       : phase === "reviewed"
         ? "review"
-        : phase === "sealed"
+        : phase === "sealing" || phase === "sealed"
           ? "seal"
           : "capture"
   );
@@ -144,7 +146,9 @@
     new Set<StepKey>(
       phase === "sealed"
         ? ["capture", "inference", "review", "seal"]
-        : phase === "reviewed"
+        : phase === "sealing"
+          ? ["capture", "inference", "review"]
+          : phase === "reviewed"
           ? ["capture", "inference"]
           : phase === "ready" || phase === "running"
             ? phase === "ready"
@@ -157,7 +161,6 @@
   const canRunInference = $derived(recording !== null && phase === "ready");
   const isCaptureBusy = $derived(phase === "running");
 
-  void handleInit();
 </script>
 
 <div class="shell">
@@ -180,12 +183,14 @@
     <main class="content">
       {#if phase === "sealed" && sealed !== null}
         <Sealed {sealed} onReset={handleReset} />
-      {:else if phase === "reviewed" && summary !== null}
+      {:else if (phase === "reviewed" || phase === "sealing") && summary !== null}
         <Review {summary} />
         <ActionBar
           label="Seal bundle"
           icon="shield"
           helper="Signs the canonicalized manifest with your device key. Bundle is written as a single .witness file."
+          busy={phase === "sealing"}
+          busyLabel="Sealing bundle"
           onClick={handleSeal}
         />
       {:else}

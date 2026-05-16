@@ -1,18 +1,30 @@
 <script lang="ts">
   import Icon from "./icons.svelte";
-  import type { SealedBundle } from "../bindings";
+  import { commands, type AppError, type SealedBundle } from "../bindings";
 
   type Props = {
     sealed: SealedBundle;
     onReset: () => void;
   };
+  type Envelope<T> = { status: "ok"; data: T } | { status: "error"; error: AppError };
 
   let { sealed, onReset }: Props = $props();
 
-  const fileName = $derived(sealed.path.split(/[\\/]/).pop() ?? sealed.path);
-
   let copiedField: "id" | "path" | null = $state(null);
+  let revealError = $state<string | null>(null);
   let copyTimer: ReturnType<typeof setTimeout> | null = null;
+
+  async function unwrap<T>(promise: Promise<Envelope<T>>): Promise<T> {
+    const result = await promise;
+    if (result.status === "error") {
+      throw new Error(
+        typeof result.error === "string"
+          ? result.error
+          : JSON.stringify(result.error)
+      );
+    }
+    return result.data;
+  }
 
   async function copy(value: string, field: "id" | "path"): Promise<void> {
     try {
@@ -24,6 +36,15 @@
       }, 1400);
     } catch {
       copiedField = null;
+    }
+  }
+
+  async function reveal(): Promise<void> {
+    try {
+      revealError = null;
+      await unwrap(commands.revealBundleCmd(sealed.path));
+    } catch (err: unknown) {
+      revealError = err instanceof Error ? err.message : String(err);
     }
   }
 </script>
@@ -66,7 +87,7 @@
     <div class="kv-row">
       <dt>File</dt>
       <dd>
-        <code title={sealed.path}>{fileName}</code>
+        <code title={sealed.path}>{sealed.path}</code>
         <button
           class="copy-btn"
           type="button"
@@ -85,7 +106,15 @@
     </div>
   </dl>
 
+  {#if revealError !== null}
+    <p class="reveal-error">{revealError}</p>
+  {/if}
+
   <div class="actions">
+    <button class="secondary" type="button" onclick={reveal}>
+      <Icon name="folder" size={14} />
+      Show in Finder
+    </button>
     <button class="primary" type="button" onclick={onReset}>
       Start a new capture
       <Icon name="arrow-right" size={14} />
@@ -221,10 +250,20 @@
 
   .actions {
     display: flex;
+    gap: var(--space-3);
     justify-content: flex-end;
+    flex-wrap: wrap;
   }
 
-  .primary {
+  .reveal-error {
+    margin: 0 0 var(--space-4);
+    color: var(--color-danger);
+    font-size: var(--font-size-sm);
+    line-height: var(--leading-relaxed);
+  }
+
+  .primary,
+  .secondary {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
@@ -235,6 +274,16 @@
     font-weight: 600;
     font-size: var(--font-size-sm);
     transition: background var(--transition-base);
+  }
+
+  .secondary {
+    color: var(--color-text-primary);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-default);
+  }
+
+  .secondary:hover {
+    border-color: var(--color-border-strong);
   }
 
   .primary:hover {

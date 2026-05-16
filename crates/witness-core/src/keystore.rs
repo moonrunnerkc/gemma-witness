@@ -1,8 +1,8 @@
 //! OS-keychain backed Ed25519 key storage.
 //!
-//! Private key bytes never leave this module. The public API accepts a
-//! message and returns a signature; the [`SigningKey`] handle exists only
-//! for the duration of a single `sign_with_device_key` call.
+//! Private key bytes never leave this crate's signing boundary. The public
+//! API accepts a message and returns a signature; the [`SigningKey`] handle is
+//! otherwise available only to the crate-private key-provider adapter.
 //!
 //! Storage: the 32-byte seed is base64-encoded and stored in the OS
 //! keychain under service `tech.aftermath.gemma-witness` and account
@@ -91,7 +91,7 @@ pub fn delete_device_key() -> Result<(), WitnessCoreError> {
     }
 }
 
-fn load_or_create_signing_key() -> Result<SigningKey, WitnessCoreError> {
+pub(crate) fn load_or_create_signing_key() -> Result<SigningKey, WitnessCoreError> {
     match read_seed_b64()? {
         Some(seed_b64) => decode_seed(&seed_b64),
         None => {

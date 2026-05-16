@@ -17,7 +17,7 @@ use crate::commands::audio_commands::{start_recording_cmd, stop_recording_cmd};
 use crate::commands::device::{discard_capture_cmd, initialize_device};
 use crate::commands::image_commands::pick_images_cmd;
 use crate::commands::inference_commands::run_inference_cmd;
-use crate::commands::seal_commands::seal_bundle_cmd;
+use crate::commands::seal_commands::{reveal_bundle_cmd, seal_bundle_cmd};
 use crate::state::{CaptureState, SharedState};
 
 fn specta_builder() -> Builder<tauri::Wry> {
@@ -28,6 +28,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
         pick_images_cmd,
         run_inference_cmd,
         seal_bundle_cmd,
+        reveal_bundle_cmd,
         discard_capture_cmd
     ])
 }

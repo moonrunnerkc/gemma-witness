@@ -60,9 +60,9 @@
         </span>
       </button>
     {:else}
-      <div class="device-chip device-chip--loading" aria-live="polite">
-        <span class="pulse"></span>
-        <span class="device-label">Initializing device key</span>
+      <div class="device-chip device-chip--pending" aria-live="polite">
+        <Icon name="key" size={12} />
+        <span class="device-label">Device key loads on seal</span>
       </div>
     {/if}
   </div>
@@ -147,7 +147,7 @@
       border-color var(--transition-base);
   }
 
-  .device-chip:hover:not(:disabled):not(.device-chip--loading) {
+  .device-chip:hover:not(:disabled):not(.device-chip--pending) {
     background: var(--color-bg-surface-hover);
     border-color: var(--color-border-strong);
     color: var(--color-text-primary);
@@ -172,23 +172,7 @@
     color: var(--color-text-tertiary);
   }
 
-  .pulse {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--color-warning);
-    box-shadow: 0 0 0 0 var(--color-warning);
-    animation: pulse 1.6s ease-in-out infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% {
-      opacity: 0.6;
-      transform: scale(0.85);
-    }
-    50% {
-      opacity: 1;
-      transform: scale(1);
-    }
+  .device-chip--pending {
+    color: var(--color-text-tertiary);
   }
 </style>

@@ -35,6 +35,7 @@ apps/capture/dist/
 # Internal planning docs (keep local, not for the public repo)
 LIMITATIONS-RESOLUTION.md
 SECURITY-AUDIT.md
+DEMO-VIDEO.md
 
 # Demo bundle artifacts. The journal, screenshots, and CHECKSUMS.txt under
 # evidence/demo-*/ are committed for reproducibility; the .witness binaries

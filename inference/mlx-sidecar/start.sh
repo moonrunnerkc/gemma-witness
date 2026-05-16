@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Starts the mlx-vlm OpenAI-compatible sidecar in the background.
-# Writes the PID to evidence/day1/sidecar.pid and logs to evidence/day1/sidecar.log.
+# Writes the PID to target/sidecar-state/mlx-sidecar.pid and logs to
+# target/sidecar-state/mlx-sidecar.log.
 # Waits until the server is reachable on the configured port before returning.
 #
 # Usage: ./start.sh
@@ -8,6 +9,7 @@
 #   GW_SIDECAR_MODEL  default mlx-community/gemma-4-e4b-it-4bit
 #   GW_SIDECAR_PORT   default 8080
 #   GW_SIDECAR_HOST   default 127.0.0.1
+#   GW_SIDECAR_FOREGROUND  when 1, run the server in the foreground
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,6 +17,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MODEL="${GW_SIDECAR_MODEL:-mlx-community/gemma-4-e4b-it-4bit}"
 PORT="${GW_SIDECAR_PORT:-8080}"
 HOST="${GW_SIDECAR_HOST:-127.0.0.1}"
+FOREGROUND="${GW_SIDECAR_FOREGROUND:-0}"
 
 case "$HOST" in
   127.0.0.1|::1|localhost) ;;
@@ -29,16 +32,37 @@ mkdir -p "$STATE_DIR"
 PID_FILE="$STATE_DIR/mlx-sidecar.pid"
 LOG_FILE="$STATE_DIR/mlx-sidecar.log"
 
-if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-  echo "sidecar already running with pid $(cat "$PID_FILE"). run stop.sh first." >&2
-  exit 1
+if [ -f "$PID_FILE" ]; then
+  TRACKED_PID="$(cat "$PID_FILE")"
+  if kill -0 "$TRACKED_PID" 2>/dev/null; then
+    echo "sidecar already running with pid $TRACKED_PID. run stop.sh first." >&2
+    exit 1
+  fi
+  echo "cleaning up stale sidecar pid file for pid $TRACKED_PID."
+  rm -f "$PID_FILE"
 fi
 
 export PATH="$HOME/.local/bin:$PATH"
 cd "$SCRIPT_DIR"
+uv sync --frozen
+
+PYTHON="$SCRIPT_DIR/.venv/bin/python"
+if [ ! -x "$PYTHON" ]; then
+  echo "expected uv-managed python at $PYTHON after uv sync, but it is missing." >&2
+  exit 65
+fi
+
+if [ "$FOREGROUND" = "1" ]; then
+  echo "starting mlx-vlm sidecar in foreground model=$MODEL host=$HOST port=$PORT"
+  export PYTHONUNBUFFERED=1
+  exec "$PYTHON" -m mlx_vlm server \
+    --model "$MODEL" \
+    --host "$HOST" \
+    --port "$PORT"
+fi
 
 : > "$LOG_FILE"
-nohup uv run python -m mlx_vlm server \
+PYTHONUNBUFFERED=1 nohup "$PYTHON" -m mlx_vlm server \
   --model "$MODEL" \
   --host "$HOST" \
   --port "$PORT" \

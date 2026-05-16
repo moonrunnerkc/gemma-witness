@@ -14,6 +14,17 @@ uv sync
 ./start.sh
 ```
 
+`start.sh` runs `uv sync --frozen`, then launches the server with the
+uv-managed `.venv/bin/python` directly. This keeps the PID file pointed at the
+actual long-running server process instead of the `uv` wrapper.
+
+For supervised dev sessions where the terminal should stay attached to the
+server logs:
+
+```sh
+GW_SIDECAR_FOREGROUND=1 ./start.sh
+```
+
 Do not run `pip install -e .` against this directory. `pyproject.toml` carries
 upper-bounded ranges so a hand-installed environment can stay within the same
 minor as the lockfile, but the hashed pin lives only in `uv.lock`.
@@ -25,6 +36,7 @@ minor as the lockfile, but the hashed pin lives only in `uv.lock`.
 | `GW_SIDECAR_MODEL` | `mlx-community/gemma-4-e4b-it-4bit` | Must match a row in `inference/fingerprints/index.json`. |
 | `GW_SIDECAR_PORT` | `8080` | The capture app's default. |
 | `GW_SIDECAR_HOST` | `127.0.0.1` | `start.sh` refuses any non-loopback host. |
+| `GW_SIDECAR_FOREGROUND` | `0` | Set to `1` to keep the server attached to the current terminal. |
 | `GW_SIDECAR_TOKEN` | (set by capture app) | Per-launch shared secret. The capture app spawns the sidecar with this env var; manual launches without it accept any request and should not be trusted by the capture app. |
 
 ## stop.sh

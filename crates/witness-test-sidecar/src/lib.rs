@@ -83,6 +83,9 @@ pub struct FakeConfig {
     /// The id returned by `GET /v1/models`. The seal command's fingerprint
     /// lookup is keyed off this. Default: the seeded mlx-community entry.
     pub model_id: String,
+    /// Optional complete model list returned by `GET /v1/models`. When unset,
+    /// the fake returns `model_id` as the only entry.
+    pub listed_model_ids: Option<Vec<String>>,
     /// Pass-0 transcript text returned in `choices[0].message.content`.
     pub transcript: String,
     /// Pass-2 image-description text. Used for every image request.
@@ -110,6 +113,7 @@ impl Default for FakeConfig {
     fn default() -> Self {
         Self {
             model_id: "mlx-community/gemma-4-e4b-it-4bit".to_string(),
+            listed_model_ids: None,
             transcript: "I am standing at the corner of Front and Bay Street. A truck just rolled over and there is fuel leaking onto the road.".to_string(),
             image_description: "A delivery truck on its side at a four-way intersection, with fluid pooling on the asphalt and two pedestrians watching from across the crosswalk.".to_string(),
             verdict: "consistent".to_string(),
@@ -320,14 +324,7 @@ fn route(req: &HttpRequest, config: &FakeConfig) -> HttpResponse {
     match (req.method.as_str(), req.path.as_str()) {
         ("GET", "/v1/models") => HttpResponse {
             status: 200,
-            body: json!({
-                "object": "list",
-                "data": [{
-                    "id": config.model_id,
-                    "object": "model",
-                    "owned_by": "fake-sidecar"
-                }]
-            }),
+            body: models_response(config),
         },
         ("POST", "/v1/handshake") => handle_handshake(&req.body),
         ("POST", "/v1/chat/completions") => handle_chat_completions(&req.body, config),
@@ -336,6 +333,27 @@ fn route(req: &HttpRequest, config: &FakeConfig) -> HttpResponse {
             body: json!({ "error": format!("no route for {} {}", req.method, req.path) }),
         },
     }
+}
+
+fn models_response(config: &FakeConfig) -> Value {
+    let ids = config
+        .listed_model_ids
+        .clone()
+        .unwrap_or_else(|| vec![config.model_id.clone()]);
+    let data: Vec<Value> = ids
+        .into_iter()
+        .map(|id| {
+            json!({
+                "id": id,
+                "object": "model",
+                "owned_by": "fake-sidecar"
+            })
+        })
+        .collect();
+    json!({
+        "object": "list",
+        "data": data
+    })
 }
 
 fn handle_handshake(body: &[u8]) -> HttpResponse {
