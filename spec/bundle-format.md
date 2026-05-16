@@ -51,3 +51,22 @@ The manifest's integrity is enforced by the signature, not by an entry in `asset
 - ZIP entries stored uncompressed; this avoids deflate version drift between platforms.
 - ZIP modification times set to the Unix epoch (1980-01-01 in DOS time, the lowest the format allows).
 - Manifest produced via `serde_jcs::to_vec`; signature is computed on those bytes; the same bytes are written into the ZIP.
+
+## Trust anchors
+
+Two distinct signing identities are load-bearing for a verifier deciding whether to trust a bundle.
+
+### Per-bundle signer (the device key)
+
+Each bundle's `signature.json` is produced by the capture app's device key. The signing algorithm is recorded in `signature.algorithm` (Ed25519 today); the public key is embedded both in `manifest.signer.public_key_pem` (covered by the signature) and, as documentation, in the verifier UI as a 16-character SHA-256 fingerprint. Verifiers MUST refuse a bundle whose `signature.key_id` does not match the SHA-256 of `manifest.signer.public_key_pem`'s raw key bytes. The trust decision for the signer is downstream: a verifier comparing the rendered fingerprint against `apps/verifier/trusted-signers.json` declares the bundle "signed by a known witness" or "signed by an unknown key". TOFU (treat the first key seen as authoritative) is acceptable for civic-accountability use but is not the same trust property as a registered signer.
+
+### Registry-of-registries (the build identity)
+
+The fingerprint registry under `inference/fingerprints/` is baked into the capture binary at compile time and inlined into the static verifier at build time. Its authenticity is tied to the build pipeline's signing identity, not to any one signer's device key. The integrity contract has two layers:
+
+1. **Content gate.** `inference/fingerprints/registry-manifest.json` is the JCS-canonical envelope listing every file under the registry directory and its SHA-256. Both `crates/witness-fingerprints/build.rs` and `apps/verifier/build.mjs` recompute every hash and refuse to embed the registry on mismatch. A regression suite (`crates/witness-fingerprint-verify/tests/tamper-regression.rs`) walks tampered trees through this gate to keep it honest.
+2. **Signature gate.** `inference/fingerprints/registry-manifest.sigstore` is the cosign `sign-blob --bundle` output covering the envelope. It is produced by `.github/workflows/sign-fingerprints.yml` under the same keyless OIDC identity that signs `SHASUMS256.txt` in `release.yml`. Verifiers MUST chain the bundle's certificate to the pinned Sigstore production trust root and MUST accept only certificate subjects whose SAN URI starts with the workflow-path prefix recorded in `RELEASE.md` §"Trust anchors". The Rust side enforces this at `witness-fingerprint-verify::signature::verify_signature`; the verifier-side enforcement happens at build time in `apps/verifier/build-verify-registry.mjs` and surfaces to the user as the "Registry signature" check row.
+
+A placeholder envelope (`registry-manifest.json` with `placeholder: true`) is permitted during local development; both the Rust and JS build paths emit a loud warning and refuse to ship a production binary or verifier HTML against it. Once the signing workflow has run on a branch, every subsequent build either reproduces the same signature or fails.
+
+Updates to the OIDC issuer or the workflow-path prefix MUST happen in lockstep across `RELEASE.md`, `crates/witness-fingerprint-verify/src/signature.rs`, and `apps/verifier/build-verify-registry.mjs`. The unit test `identity_prefix_pins_release_yml_workflow_path` catches a drift in the Rust constant; the equivalent JS constant is read from a literal string and surfaces in `apps/verifier/build-verify-registry.mjs`.
