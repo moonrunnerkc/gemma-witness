@@ -7215,6 +7215,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "witness-core",
+ "witness-fingerprint-verify",
 ]
 
 [[package]]

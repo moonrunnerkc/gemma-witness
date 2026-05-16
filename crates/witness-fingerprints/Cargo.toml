@@ -16,6 +16,7 @@ witness-core = { path = "../witness-core" }
 
 [build-dependencies]
 serde_json.workspace = true
+witness-fingerprint-verify = { path = "../witness-fingerprint-verify" }
 
 [dev-dependencies]
 tempfile = "3.12"
