@@ -9,6 +9,7 @@ members = [
     "crates/witness-test-sidecar",
     "apps/capture/src-tauri",
     "tools/seed-fingerprints",
+    "tools/check-pinned-binary",
 ]
 
 [workspace.package]
