@@ -63,10 +63,11 @@ fn artifacts_dir() -> PathBuf {
 /// default is the mlx entry so the Apple Silicon invocation does not
 /// regress.
 fn known_fingerprint_from_spec() -> ModelFingerprint {
-    let entry_file = std::env::var("WITNESS_FINGERPRINT_ENTRY").unwrap_or_else(|_| {
-        "mlx-community__gemma-4-e4b-it-4bit__cc3b666c.json".to_string()
-    });
-    let path = workspace_root().join("inference/fingerprints").join(&entry_file);
+    let entry_file = std::env::var("WITNESS_FINGERPRINT_ENTRY")
+        .unwrap_or_else(|_| "mlx-community__gemma-4-e4b-it-4bit__cc3b666c.json".to_string());
+    let path = workspace_root()
+        .join("inference/fingerprints")
+        .join(&entry_file);
     let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {
         panic!(
             "registry entry not readable at {}: {err}. set WITNESS_FINGERPRINT_ENTRY to the correct filename under inference/fingerprints/.",
