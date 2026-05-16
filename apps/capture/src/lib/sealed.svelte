@@ -1,30 +1,18 @@
 <script lang="ts">
   import Icon from "./icons.svelte";
-  import { commands, type AppError, type SealedBundle } from "../bindings";
+  import { commands, type SealedBundle } from "../bindings";
+  import { unwrap } from "./invoke";
 
   type Props = {
     sealed: SealedBundle;
     onReset: () => void;
   };
-  type Envelope<T> = { status: "ok"; data: T } | { status: "error"; error: AppError };
 
   let { sealed, onReset }: Props = $props();
 
   let copiedField: "id" | "path" | null = $state(null);
   let revealError = $state<string | null>(null);
   let copyTimer: ReturnType<typeof setTimeout> | null = null;
-
-  async function unwrap<T>(promise: Promise<Envelope<T>>): Promise<T> {
-    const result = await promise;
-    if (result.status === "error") {
-      throw new Error(
-        typeof result.error === "string"
-          ? result.error
-          : JSON.stringify(result.error)
-      );
-    }
-    return result.data;
-  }
 
   async function copy(value: string, field: "id" | "path"): Promise<void> {
     try {

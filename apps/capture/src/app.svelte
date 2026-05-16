@@ -1,7 +1,6 @@
 <script lang="ts">
   import {
     commands,
-    type AppError,
     type RecordingFinished,
     type InferenceSummary,
     type SealedBundle
@@ -14,8 +13,8 @@
   import Sealed from "./lib/sealed.svelte";
   import ActionBar from "./lib/action-bar.svelte";
   import ErrorBanner from "./lib/error-banner.svelte";
+  import { unwrap } from "./lib/invoke";
 
-  type Envelope<T> = { status: "ok"; data: T } | { status: "error"; error: AppError };
   type Phase =
     | "idle"
     | "recording"
@@ -24,18 +23,6 @@
     | "reviewed"
     | "sealing"
     | "sealed";
-
-  async function unwrap<T>(promise: Promise<Envelope<T>>): Promise<T> {
-    const result = await promise;
-    if (result.status === "error") {
-      throw new Error(
-        typeof result.error === "string"
-          ? result.error
-          : JSON.stringify(result.error)
-      );
-    }
-    return result.data;
-  }
 
   let phase = $state<Phase>("idle");
   let deviceKeyId = $state<string | null>(null);
