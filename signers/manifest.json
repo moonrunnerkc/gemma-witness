@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "placeholder": true,
+  "description": "Aggregate signer registry. Regenerated from signer-<id>.json files at release time and signed by the same Sigstore keyless identity used for inference/fingerprints/registry-manifest.json. placeholder=true until the first signing run lands; the verifier falls back to apps/verifier/trusted-signers.json until then.",
+  "signers": []
+}
