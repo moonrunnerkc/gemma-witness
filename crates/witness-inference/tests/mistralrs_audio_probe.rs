@@ -11,13 +11,17 @@
 //! Run modes:
 //!
 //! - `cargo test -p witness-inference --test mistralrs_audio_probe` skips
-//!   when the sidecar is not reachable so a default workspace test run on a
-//!   host without mistral.rs installed still passes.
-//! - Setting `WITNESS_MISTRALRS_REQUIRE=1` flips the skip path into a hard
-//!   failure. The release workflow sets this so the v0.2+ release gate
-//!   cannot pass without a working audio path.
-//! - `WITNESS_MISTRALRS_URL` overrides the default endpoint
-//!   `http://127.0.0.1:8080`.
+//!   by default. The probe is opt-in because port 8080 may be answered by
+//!   any OpenAI-compatible sidecar (mlx-vlm, transformers, the in-process
+//!   fake), and pointing the probe at one of those would either produce a
+//!   false PASS or a misleading FAIL. The caller MUST opt in by either
+//!   setting `WITNESS_MISTRALRS_URL` to the live mistral.rs endpoint or by
+//!   setting `WITNESS_MISTRALRS_REQUIRE=1`.
+//! - Setting `WITNESS_MISTRALRS_REQUIRE=1` flips skip-on-unreachable into
+//!   a hard failure. The release workflow sets this so the v0.2+ release
+//!   gate cannot pass without a working audio path.
+//! - `WITNESS_MISTRALRS_URL` selects the endpoint. Setting it is the way
+//!   to opt into the probe outside of REQUIRE mode.
 //! - `WITNESS_MISTRALRS_MODEL` overrides the model name sent in the request
 //!   body. Default: `google/gemma-4-E4B-it`, matching
 //!   `inference/mistralrs-sidecar/start.sh`.
@@ -53,8 +57,12 @@ const EXPECTED_KEYWORDS: &[&str] = &[
     "site",
 ];
 
+fn explicit_endpoint() -> Option<String> {
+    std::env::var("WITNESS_MISTRALRS_URL").ok()
+}
+
 fn endpoint() -> String {
-    std::env::var("WITNESS_MISTRALRS_URL").unwrap_or_else(|_| DEFAULT_ENDPOINT.to_string())
+    explicit_endpoint().unwrap_or_else(|| DEFAULT_ENDPOINT.to_string())
 }
 
 fn model_name() -> String {
@@ -100,6 +108,18 @@ fn skip_or_fail(reason: &str) {
 
 #[test]
 fn mistralrs_accepts_input_audio_and_response_is_acoustically_informed() {
+    // Opt-in gate. Without explicit signal (WITNESS_MISTRALRS_URL set OR
+    // WITNESS_MISTRALRS_REQUIRE=1) we skip even if something is answering on
+    // 8080, because that something is more likely the mlx-vlm or transformers
+    // sidecar than a real mistral.rs build, and the probe's PASS/FAIL would
+    // not mean what it claims to mean.
+    let explicit = explicit_endpoint();
+    if explicit.is_none() && !require_mode() {
+        eprintln!(
+            "mistralrs_audio_probe: skipping (opt-in). Set WITNESS_MISTRALRS_URL to the live mistral.rs endpoint, or WITNESS_MISTRALRS_REQUIRE=1 to make a missing endpoint a hard failure."
+        );
+        return;
+    }
     let endpoint = endpoint();
     if !sidecar_reachable(&endpoint) {
         skip_or_fail(&format!(
