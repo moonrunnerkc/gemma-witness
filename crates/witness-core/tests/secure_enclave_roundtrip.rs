@@ -16,7 +16,7 @@
 //! the only mode that succeeds for unsigned development binaries, and it
 //! vanishes when the [`SecureEnclaveProvider`] drops at test end.
 
-#![cfg(all(target_os = "macos", feature = "hardware-keys"))]
+#![cfg(target_os = "macos")]
 
 use std::path::PathBuf;
 
@@ -151,4 +151,23 @@ fn sep_signed_v2_bundle_round_trips() {
         report.is_ok(),
         "freshly SEP-signed bundle must verify cleanly: {report:?}"
     );
+
+    // Attestation is informational. On an unsigned dev binary the SIK is
+    // unreachable and we expect None; in a notarized build carrying the
+    // `com.apple.security.attestation.access` entitlement this will be
+    // Some("apple-sep-v1"). Either path is valid; the bundle still verifies.
+    let attestation_present = manifest.signer.attestation.is_some();
+    eprintln!(
+        "sep_signed_v2_bundle_round_trips: signer.attestation present = {attestation_present}"
+    );
+    if let Some(att) = manifest.signer.attestation.as_ref() {
+        assert_eq!(
+            att.format, "apple-sep-v1",
+            "the SEP provider must tag any attestation it produces with the apple-sep-v1 format"
+        );
+        assert!(
+            !att.payload_b64.is_empty(),
+            "attestation payload must not be empty when the provider returns Some"
+        );
+    }
 }

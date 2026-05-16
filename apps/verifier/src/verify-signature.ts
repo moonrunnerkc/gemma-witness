@@ -133,8 +133,20 @@ function verifyEcdsaP256(
   }
   let valid: boolean;
   try {
+    // `lowS: false` matches the Rust verifier's behavior (the `p256` crate
+    // accepts both low-S and high-S signatures) and is required for
+    // signatures produced by Apple's Secure Enclave, whose
+    // `SecKeyCreateSignature` does not normalize S to the canonical low
+    // half. ECDSA malleability is irrelevant to this verifier because
+    // we anchor on `signature.json.signature_b64` byte-for-byte: a
+    // mutated S yields a different `signature_b64`, which a bundle
+    // consumer treats as a distinct (still valid) signature, not as
+    // grounds for accepting two seal events for one manifest. The
+    // @noble/curves default would reject SEP/TPM/NCrypt-emitted high-S
+    // signatures even though both peers agree they verify.
     valid = p256.verify(signatureBytes, canonical, publicKeyBytes, {
       format: "der",
+      lowS: false,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

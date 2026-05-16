@@ -4,6 +4,7 @@ import type {
   InferenceParameters,
   Manifest,
   PassParameters,
+  SignerAttestation,
   VerificationResult,
 } from "./types";
 
@@ -67,6 +68,10 @@ function appendOptionalRows(container: HTMLElement, manifest: Manifest): void {
     container.appendChild(renderAmendsRow(manifest.amends));
   }
 
+  if (manifest.signer.attestation) {
+    container.appendChild(renderAttestationRow(manifest.signer.attestation));
+  }
+
   const fingerprint =
     manifest.assertions["gemma.witness.audio_fingerprint"];
   if (fingerprint) {
@@ -92,6 +97,75 @@ function renderAmendsRow(amends: AmendsReference): HTMLElement {
     `reason:                    ${amends.reason}`;
   row.appendChild(drill);
   return row;
+}
+
+/**
+ * Render the hardware-key attestation blob carried by v2 manifests.
+ *
+ * The blob is informational: the verifier neither rejects nor accepts a
+ * bundle on its presence under the WS3-1 spec. We surface the format tag,
+ * the byte length of the payload, and a short hexadecimal preview so a
+ * reviewer can compare the value against an out-of-band attestation
+ * publication if they have one. The full payload is opaque under the
+ * format-specific schema; truncating preserves the row layout while still
+ * conveying that real bytes are present.
+ */
+function renderAttestationRow(att: SignerAttestation): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "row advisory";
+  row.innerHTML = `<div class="row-name">Signer attestation (${escapeHtml(att.format)})</div><div class="row-status">Advisory</div>`;
+  const drill = document.createElement("div");
+  drill.className = "drilldown";
+  drill.textContent = summarizeAttestation(att);
+  row.appendChild(drill);
+  return row;
+}
+
+/**
+ * Convert a [`SignerAttestation`] into the human-readable drilldown text
+ * shown under the verifier's "Signer attestation" row. Extracted from the
+ * DOM-bound renderer so it can be unit-tested without a browser context.
+ *
+ * Output shape (newline-separated):
+ *   format:       <format tag>
+ *   payload_size: <N bytes>
+ *   payload_hex:  <first 32 bytes as space-separated hex, then "..." if longer>
+ *   cert_chain:   <count or "(none)">
+ *
+ * A malformed payload_b64 surfaces as a non-fatal "(payload_b64 did not
+ * decode as valid base64)" rather than crashing the row: the bundle's
+ * signature has already verified by the time we reach this advisory.
+ */
+export function summarizeAttestation(att: SignerAttestation): string {
+  let payloadBytes = 0;
+  let preview = "";
+  try {
+    const bin = atob(att.payload_b64);
+    payloadBytes = bin.length;
+    const previewLen = Math.min(32, bin.length);
+    const hex: string[] = new Array(previewLen);
+    for (let i = 0; i < previewLen; i++) {
+      hex[i] = bin.charCodeAt(i).toString(16).padStart(2, "0");
+    }
+    preview = hex.join(" ");
+    if (bin.length > previewLen) {
+      preview += " ... (truncated)";
+    }
+  } catch {
+    preview = "(payload_b64 did not decode as valid base64)";
+  }
+
+  const lines: string[] = [
+    `format:       ${att.format}`,
+    `payload_size: ${payloadBytes} bytes`,
+    `payload_hex:  ${preview}`,
+  ];
+  if (att.certificate_chain_b64 && att.certificate_chain_b64.length > 0) {
+    lines.push(`cert_chain:   ${att.certificate_chain_b64.length} certificate(s)`);
+  } else {
+    lines.push(`cert_chain:   (none)`);
+  }
+  return lines.join("\n");
 }
 
 function renderAudioFingerprintRow(fp: AudioFingerprint): HTMLElement {

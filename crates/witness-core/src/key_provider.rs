@@ -24,6 +24,7 @@ use ed25519_dalek::SigningKey;
 use crate::error::WitnessCoreError;
 use crate::keystore::load_or_create_signing_key;
 use crate::keystore_p256::load_or_create_signing_key as load_or_create_p256_signing_key;
+use crate::manifest::SignerAttestation;
 use crate::signing::{encode_public_key_pem, key_id, sign};
 use crate::signing_ecdsa;
 
@@ -87,6 +88,19 @@ pub trait KeyProvider: Send + Sync {
 
     /// Algorithm this provider's signatures use.
     fn algorithm(&self) -> SigningAlgorithm;
+
+    /// Optional hardware-backed key attestation document.
+    ///
+    /// Returns `Some` only when this provider is rooted in a hardware
+    /// element (Secure Enclave, TPM, NCrypt) AND the running binary has
+    /// the entitlements / signed-build context needed to read that
+    /// element's attestation. The default impl returns `None`, which is
+    /// correct for software-only providers and for hardware providers
+    /// running on unsigned dev binaries (e.g. SEP without the
+    /// `com.apple.security.attestation.access` entitlement).
+    fn attestation(&self) -> Option<SignerAttestation> {
+        None
+    }
 }
 
 /// Default provider: Ed25519 seed in the OS keychain.
@@ -205,12 +219,14 @@ impl KeyProvider for SoftwareEcdsaP256Provider {
     }
 }
 
-// Per-target gating for the `hardware-keys` feature. Each supported target
-// pulls in its own backend module from a sibling file; targets without a
-// backend yet (Linux TPM, Windows NCrypt) still produce a build-time error
-// so a maintainer cannot accidentally ship a binary that claims hardware
-// backing without delivering it.
-#[cfg(all(feature = "hardware-keys", not(any(target_os = "macos"))))]
+// Per-target hardware backend gate. macOS pulls in the Secure Enclave
+// provider unconditionally (the security-framework dep is already a
+// target-cfg dep, so non-macOS builds never compile it). Linux (TPM 2.0)
+// and Windows (NCrypt) backends are tracked but not yet implemented; if a
+// future maintainer turns on the `hardware-keys` feature on those targets
+// the build still errors so a binary cannot claim hardware backing it
+// does not deliver.
+#[cfg(all(feature = "hardware-keys", not(target_os = "macos")))]
 compile_error!(
     "the `hardware-keys` feature is currently implemented for macOS (Secure Enclave) only. \
      Linux (TPM 2.0) and Windows (NCrypt) backends are tracked but not yet wired up. \

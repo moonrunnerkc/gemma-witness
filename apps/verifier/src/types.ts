@@ -151,6 +151,24 @@ export interface TrustedSigner {
   label: string;
   added_at: string;
   note: string;
+  /**
+   * RFC 3339 timestamp at which this signer's key was revoked. Optional.
+   *
+   * When present, the verifier MUST fail the signer-identity row with a red
+   * "Signed by a revoked key" state and MUST mark the overall verdict
+   * failed even if every cryptographic check passes. This is the WS5
+   * mechanism for retiring a key that the registered signer has rotated
+   * out of, or that has been compromised: existing bundles signed before
+   * the rotation should be re-verified against a fresh signature from the
+   * new key, not silently accepted.
+   *
+   * Verifiers may render `revocation_reason` alongside, when present, to
+   * help a reviewer understand whether the revocation was routine (key
+   * rotation, hardware retirement) or adversarial (compromise).
+   */
+  revoked_at?: string;
+  /** Free-text reason for revocation. Surfaced when `revoked_at` is set. */
+  revocation_reason?: string;
 }
 
 /** The parsed trusted-signers.json envelope. */

@@ -39,7 +39,9 @@ hardware-keys = []
 # Pinned to a 3.x line that builds on stable Rust 1.80 (our MSRV); 3.7 raised
 # rust-version to 1.85.
 security-framework = { version = "~3.6", default-features = false, features = ["OSX_10_15"] }
+security-framework-sys = "2"
 core-foundation = "0.10"
+core-foundation-sys = "0.8"
 
 [dev-dependencies]
 jsonschema.workspace = true

@@ -12,7 +12,8 @@ use crate::error::WitnessCoreError;
 use crate::hashing::{hash_bytes_hex, hash_file_hex};
 use crate::manifest::{
     AmendsReference, Assertions, AssetEntry, CaptureEnvironment, ConsistencyVerdict, Manifest,
-    ModelFingerprint, ReasoningTrace, SignatureDocument, SignerInfo, MANIFEST_VERSION,
+    ModelFingerprint, ReasoningTrace, SignatureDocument, SignerAttestation, SignerInfo,
+    MANIFEST_VERSION,
 };
 use crate::{IncidentReport, InferenceParameters};
 
@@ -82,6 +83,18 @@ pub struct BundleInputs {
 pub trait BundleSigner {
     fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, WitnessCoreError>;
     fn algorithm(&self) -> crate::key_provider::SigningAlgorithm;
+    /// Optional hardware-backed key attestation document. Returns `Some`
+    /// only when the signer can prove its key was minted on a specific
+    /// piece of hardware (Apple Secure Enclave, TPM 2.0, NCrypt) AND the
+    /// running binary has the entitlement needed to read the attestation.
+    /// Unsigned dev binaries on macOS cannot read SEP attestations, so
+    /// `Some` is reserved for production builds carrying the right
+    /// entitlements. The default impl returns `None`, which lets the
+    /// bundle builder omit `signer.attestation` and keeps the v1 wire
+    /// shape byte-identical for software signers.
+    fn attestation(&self) -> Option<SignerAttestation> {
+        None
+    }
 }
 
 /// Build, sign, and write a `.witness` bundle to `out_path`.
@@ -196,7 +209,7 @@ pub fn build_and_seal_bundle<S: BundleSigner>(
             algorithm: signer_algorithm.as_str().to_string(),
             public_key_pem: inputs.signer_public_key_pem.clone(),
             key_id: inputs.signer_key_id.clone(),
-            attestation: None,
+            attestation: attestation_for_version(manifest_version, signer.attestation()),
         },
         assets,
         assertions: Assertions {
@@ -289,4 +302,56 @@ fn media_type_for(in_zip_path: &str) -> String {
 /// asset entries.
 pub fn hash_path(path: &Path) -> Result<String, WitnessCoreError> {
     hash_file_hex(path)
+}
+
+/// Drop the attestation blob when the wire manifest is v1.
+///
+/// v1 manifests forbid `signer.attestation` (the verifier rejects v1
+/// bundles that carry it). Software-only Ed25519 signers default to None,
+/// but a defensive guard here keeps a future BundleSigner impl from
+/// silently producing a malformed bundle by attaching attestation to an
+/// Ed25519 (= v1) signer.
+fn attestation_for_version(
+    manifest_version: u32,
+    candidate: Option<SignerAttestation>,
+) -> Option<SignerAttestation> {
+    if manifest_version >= 2 {
+        candidate
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture_attestation() -> SignerAttestation {
+        SignerAttestation {
+            format: "apple-sep-v1".to_string(),
+            payload_b64: "AAECAwQF".to_string(),
+            certificate_chain_b64: None,
+        }
+    }
+
+    #[test]
+    fn attestation_passes_through_on_v2() {
+        let kept = attestation_for_version(2, Some(fixture_attestation()));
+        assert_eq!(kept, Some(fixture_attestation()));
+    }
+
+    #[test]
+    fn attestation_is_dropped_on_v1() {
+        let dropped = attestation_for_version(1, Some(fixture_attestation()));
+        assert!(
+            dropped.is_none(),
+            "v1 manifests forbid signer.attestation; the guard must strip it even \
+             if a future provider supplies one"
+        );
+    }
+
+    #[test]
+    fn missing_attestation_stays_missing_on_v2() {
+        assert!(attestation_for_version(2, None).is_none());
+    }
 }

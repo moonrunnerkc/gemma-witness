@@ -11,6 +11,7 @@ import * as url from "node:url";
 import { unzipSync, zipSync, strFromU8 } from "fflate";
 
 import { verifyBundle } from "../src/verify-logic";
+import { summarizeAttestation } from "../src/render-result";
 import type {
   KnownFingerprints,
   TrustedSigners,
@@ -26,6 +27,12 @@ const FIXTURE = path.join(
   __dirname,
   "../../..",
   "tests/fixtures/day-4-fixture.witness",
+);
+
+const SEP_FIXTURE = path.join(
+  __dirname,
+  "../../..",
+  "tests/fixtures/secure-enclave-fixture.witness",
 );
 
 const KNOWN_WITH_FINGERPRINT: KnownFingerprints = JSON.parse(
@@ -125,8 +132,18 @@ function encodeP256Spki(uncompressedPoint: Uint8Array): string {
 /** Re-sign the day-4 fixture as a v2 ECDSA P-256 bundle: replace the signer
  *  with a fresh P-256 key, bump manifest_version, canonicalize, DER-sign, and
  *  rewrite signature.json. Returns the materials a test needs to assemble the
- *  bundle and a matching trusted-signers entry. */
-function reSignAsP256(): {
+ *  bundle and a matching trusted-signers entry.
+ *
+ *  Pass `opts.attestation` to embed a `signer.attestation` blob (used by the
+ *  WS3-8 attestation-rendering test). When omitted, no attestation field is
+ *  written (matching what an unsigned dev SEP build produces today). */
+function reSignAsP256(opts?: {
+  attestation?: {
+    format: string;
+    payload_b64: string;
+    certificate_chain_b64?: string[];
+  };
+}): {
   manifestText: string;
   sigDocText: string;
   keyId: string;
@@ -146,6 +163,9 @@ function reSignAsP256(): {
     public_key_pem: pem,
     key_id: keyId,
   };
+  if (opts?.attestation) {
+    manifest.signer.attestation = opts.attestation;
+  }
   const canonical = canonicalizeJson(manifest);
   if (canonical === undefined) {
     throw new Error("canonicalize returned undefined");
@@ -660,6 +680,211 @@ async function runTests(): Promise<void> {
       `T15: detail must name the permitted set for v1; got ${JSON.stringify(sigRow.details)}`,
     );
     console.log("PASS T15");
+  }
+
+  // T16 (WS3-8): A v2 + ecdsa-p256 manifest carrying signer.attestation
+  // round-trips through the verifier. The signature row passes and the
+  // returned manifest preserves the attestation blob so the renderer can
+  // surface the "Signer attestation" advisory row.
+  console.log("--- T16 (positive): v2 + ecdsa-p256 + signer.attestation round-trips with attestation preserved");
+  {
+    const { manifestText, sigDocText, keyId, pem } = reSignAsP256({
+      attestation: {
+        format: "apple-sep-v1",
+        payload_b64: "ZGV2aWNlLWF0dGVzdGF0aW9uLWZpeHR1cmU=",
+      },
+    });
+    const mutated = mutateBundle((entries) => {
+      entries.set("manifest.json", new TextEncoder().encode(manifestText));
+      entries.set("signature.json", new TextEncoder().encode(sigDocText));
+    });
+    const trusted: TrustedSigners = {
+      schema_version: 1,
+      signers: [
+        {
+          key_id: keyId,
+          public_key_pem_sha256: bytesToHex(sha256(new TextEncoder().encode(pem))),
+          label: "test SEP fixture signer",
+          added_at: "2026-05-16T00:00:00Z",
+          note: "ephemeral P-256 key with synthetic attestation",
+        },
+      ],
+    };
+    const outcome = await verifyBundle(
+      mutated,
+      KNOWN_WITH_FINGERPRINT,
+      trusted,
+      REGISTRY_VERIFIED,
+    );
+    assert(outcome.ok, `T16: overall should pass; got error=${outcome.error}`);
+    const sigRow = rowByName(outcome, "Signature valid");
+    assert(sigRow.passed, "T16: signature row should pass");
+    assert(
+      outcome.manifest !== null,
+      "T16: outcome must include the parsed manifest",
+    );
+    assert(
+      outcome.manifest.signer.attestation !== undefined &&
+        outcome.manifest.signer.attestation !== null,
+      "T16: signer.attestation must survive the verify pass for the renderer",
+    );
+    assert(
+      outcome.manifest.signer.attestation!.format === "apple-sep-v1",
+      `T16: attestation format must be preserved; got ${outcome.manifest.signer.attestation!.format}`,
+    );
+    assert(
+      outcome.manifest.signer.attestation!.payload_b64 ===
+        "ZGV2aWNlLWF0dGVzdGF0aW9uLWZpeHR1cmU=",
+      "T16: attestation payload_b64 must round-trip byte-for-byte",
+    );
+    console.log("PASS T16");
+  }
+
+  // T17 (WS3-8c): The committed Secure Enclave fixture loads through the
+  // JS verifier with `is_ok()`, surfaces `signer.attestation` for the
+  // renderer, and the attestation summary helper formats the fixture's
+  // deterministic payload correctly.
+  console.log("--- T17 (positive): committed SEP fixture verifies end-to-end and renders its attestation");
+  {
+    const buf = fs.readFileSync(SEP_FIXTURE);
+    const entries = unzipSync(new Uint8Array(buf));
+    const manifest = JSON.parse(strFromU8(entries["manifest.json"]));
+    const known: KnownFingerprints = {
+      schema_version: 1,
+      fingerprints: [
+        {
+          model_id: manifest.assertions["gemma.witness.model_fingerprint"].model_id,
+          revision: manifest.assertions["gemma.witness.model_fingerprint"].revision,
+          sha256: manifest.assertions["gemma.witness.model_fingerprint"].sha256,
+        },
+      ],
+    };
+    const trusted: TrustedSigners = {
+      schema_version: 1,
+      signers: [
+        {
+          key_id: manifest.signer.key_id,
+          public_key_pem_sha256: bytesToHex(
+            sha256(new TextEncoder().encode(manifest.signer.public_key_pem)),
+          ),
+          label: "SEP fixture signer",
+          added_at: "2026-05-16T00:00:00Z",
+          note: "ephemeral SEP key baked by generate_sep_fixture.rs",
+        },
+      ],
+    };
+    const outcome = await verifyBundle(
+      toArrayBuffer(buf),
+      known,
+      trusted,
+      REGISTRY_VERIFIED,
+    );
+    assert(outcome.ok, `T17: SEP fixture must verify; got error=${outcome.error}`);
+    assert(
+      outcome.manifest !== null && outcome.manifest.signer.attestation !== undefined &&
+        outcome.manifest.signer.attestation !== null,
+      "T17: fixture must surface signer.attestation for the renderer",
+    );
+    const att = outcome.manifest.signer.attestation!;
+    assert(
+      att.format === "apple-sep-v1-fixture",
+      `T17: fixture attestation format must be apple-sep-v1-fixture; got ${att.format}`,
+    );
+    const summary = summarizeAttestation(att);
+    assert(
+      summary.includes("format:       apple-sep-v1-fixture"),
+      `T17: summarizeAttestation must echo the fixture format tag; got:\n${summary}`,
+    );
+    assert(
+      summary.includes("payload_size: 30 bytes"),
+      `T17: fixture payload is 30 bytes ("secure-enclave-witness-fixture"); got:\n${summary}`,
+    );
+    console.log("PASS T17");
+  }
+
+  // T18 (WS5): A bundle signed by a registered-but-revoked signer fails
+  // the signer-identity row with a "REVOKED" detail and fails the overall
+  // verdict, even though every cryptographic check passes.
+  console.log("--- T18 (negative): revoked signer fails the signer-identity row");
+  {
+    const buf = fs.readFileSync(FIXTURE);
+    const entries = unzipSync(new Uint8Array(buf));
+    const manifest = JSON.parse(strFromU8(entries["manifest.json"]));
+    const trusted: TrustedSigners = {
+      schema_version: 1,
+      signers: [
+        {
+          key_id: manifest.signer.key_id,
+          public_key_pem_sha256: bytesToHex(
+            sha256(new TextEncoder().encode(manifest.signer.public_key_pem)),
+          ),
+          label: "compromised signer (test)",
+          added_at: "2026-01-01T00:00:00Z",
+          note: "previously trusted; revoked under WS5 fixture",
+          revoked_at: "2026-05-16T00:00:00Z",
+          revocation_reason: "test fixture: simulated key compromise",
+        },
+      ],
+    };
+    const outcome = await verifyBundle(
+      readFixture(),
+      KNOWN_WITH_FINGERPRINT,
+      trusted,
+      REGISTRY_VERIFIED,
+    );
+    assert(!outcome.ok, "T18: overall must fail when signer is revoked");
+    const sigRow = rowByName(outcome, "Signed by a known witness");
+    assert(!sigRow.passed, "T18: signer-identity row must fail");
+    assert(
+      sigRow.details.some((d) => d.includes("REVOKED")),
+      `T18: details must surface the revocation state; got ${JSON.stringify(sigRow.details)}`,
+    );
+    assert(
+      sigRow.details.some((d) => d.includes("simulated key compromise")),
+      `T18: details must echo the revocation_reason; got ${JSON.stringify(sigRow.details)}`,
+    );
+    console.log("PASS T18");
+  }
+
+  // T19 (WS5): A bundle signed by a registered, non-revoked signer passes
+  // the signer-identity row with no "REVOKED" wording.
+  console.log("--- T19 (positive): registered signer passes the signer-identity row");
+  {
+    const outcome = await verifyBundle(
+      readFixture(),
+      KNOWN_WITH_FINGERPRINT,
+      trustedSignersFromFixture(),
+      REGISTRY_VERIFIED,
+    );
+    assert(outcome.ok, `T19: registered signer must pass overall; got error=${outcome.error}`);
+    const sigRow = rowByName(outcome, "Signed by a known witness");
+    assert(sigRow.passed, "T19: signer-identity row must pass for a registered signer");
+    assert(
+      !sigRow.details.some((d) => d.toLowerCase().includes("revoked")),
+      `T19: registered-signer details must not contain "revoked"; got ${JSON.stringify(sigRow.details)}`,
+    );
+    console.log("PASS T19");
+  }
+
+  // T20 (WS5): A bundle whose key is not in the trusted-signers registry
+  // fails the signer-identity row with a "TOFU" wording, distinguishing
+  // it from the revoked path.
+  console.log("--- T20 (negative): unknown signer fails with a TOFU detail");
+  {
+    const outcome = await verifyBundle(
+      readFixture(),
+      KNOWN_WITH_FINGERPRINT,
+      TRUSTED_EMPTY,
+      REGISTRY_VERIFIED,
+    );
+    assert(!outcome.ok, "T20: overall must fail when signer is unknown");
+    const sigRow = rowByName(outcome, "Signed by a known witness");
+    assert(!sigRow.passed, "T20: signer-identity row must fail");
+    assert(
+      sigRow.details.some((d) => d.includes("TOFU")),
+      `T20: details must surface the TOFU state to distinguish from revoked; got ${JSON.stringify(sigRow.details)}`,
+    );
+    console.log("PASS T20");
   }
 
   console.log("\n=== ALL E2E TESTS PASSED ===");
