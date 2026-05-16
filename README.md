@@ -153,12 +153,23 @@ Tamper-evidence in this project depends on more than a signature: the build, the
 - **Signed releases.** Tagged releases run `.github/workflows/release.yml`, which builds on macOS, Linux, and Windows, writes `SHASUMS256.txt`, signs it via Sigstore keyless cosign, and attaches SLSA v1 build provenance. The cosign OIDC identity that verifiers MUST pin is published in [`RELEASE.md`](RELEASE.md).
 - **Strict signature verification.** The Rust verifier uses Ed25519 `verify_strict` (RFC 8032 §5.1.7) and asserts every field of `signature.json` (algorithm, canonicalization, signed payload, key id) against the manifest before checking the signature. The JS verifier enforces the same gates and adds a "signed by a known witness" check against an inlined `trusted-signers.json`.
 - **Bundle integrity.** Both verifiers reject unexpected ZIP entries, duplicate entries, path-traversal names, and zip-bomb payloads (per-entry and total-decompressed caps). The manifest's structural fields are checked with `deny_unknown_fields` (Rust) and a traversed `validateManifest` (JS) before any signature work.
-- **Cross-language canonicalization parity.** Edge-case JSON values (subnormals, escaped Unicode, integers near 2^53, deeply nested keys) are pinned to byte-identical outputs by a conformance suite that runs in CI on every push.
+- **Cross-language canonicalization parity.** Twenty-one edge-case JSON values (subnormals, negative zero, integers above 2^53, control characters, RTL marks, ZWJ emoji sequences, 256-key lexicographic sort, deep nesting, numeric notation collapse) are pinned to byte-identical outputs by a conformance suite that runs in CI on every push. Integers above 2^53 are projected onto their IEEE 754 double representation before canonicalization so the Rust signer and the JavaScript verifier never disagree on a value the verifier's parser cannot represent natively.
 - **Sidecar boundary.** The capture app generates a 32-byte per-launch token and rejects any non-loopback sidecar endpoint. Inference responses are streamed with a 10 MiB cap. Picked images are staged into a per-capture UUID directory before inference so the model and the seal step read identical bytes.
 - **Build supply chain.** Every GitHub Action is pinned to a 40-character commit SHA, every cargo invocation in CI carries `--locked`, and `cargo audit`, `cargo deny`, and `pnpm audit` run on every push. `.github/dependabot.yml` opens weekly SHA-bump PRs.
 - **Fingerprint provenance.** The shipped MLX entry was re-seeded against the Hugging Face LFS oid (`verified_by: "huggingface-lfs+local-recompute"`).
 
 These are tamper-evidence guarantees about the bundle and its distribution chain. They are not guarantees against a coerced reporter, a pre-compromised device, or social engineering of the trust-anchor lists. See the [Threat model](#threat-model) section for the full delineation.
+
+### Reporting a vulnerability
+
+[`SECURITY.md`](SECURITY.md) is the canonical disclosure policy. Use the
+GitHub private vulnerability reporting flow (the "Report a vulnerability"
+button on the repository's Security tab) for almost everything; encrypted
+email and an out-of-band Signal contact are documented for cases where
+that channel does not fit your threat model. Acknowledgements that name a
+CVE, a fix commit, or a disclosure timeline are signed with the same
+cosign keyless identity used for releases, with a verification recipe at
+[`docs/security-acknowledgement-format.md`](docs/security-acknowledgement-format.md).
 
 ## Installation
 
