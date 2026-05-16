@@ -17,11 +17,11 @@
 </p>
 
 <p align="center">
-  <video src="https://github.com/moonrunnerkc/gemma-witness/releases/download/demo-v1/demo.mp4" controls width="720" muted playsinline></video>
+  <video src="https://files.catbox.moe/90zlt6.mp4" controls width="720" muted playsinline></video>
 </p>
 
 <p align="center">
-  <a href="https://github.com/moonrunnerkc/gemma-witness/releases/download/demo-v1/demo.mp4">▶ Watch the 75-second demo</a>
+  <a href="https://files.catbox.moe/90zlt6.mp4">▶ Watch the 75-second demo</a>
 </p>
 
 ---
