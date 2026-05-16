@@ -79,17 +79,21 @@ gemma-witness/
 │   ├── witness-eval/             Evaluation harness
 │   └── witness-test-sidecar/     Hermetic OpenAI-compatible fake (CI uses it for cross-platform e2e)
 ├── inference/
-│   ├── fingerprints/             Unified (model_id, revision) -> safetensors sha256 registry
+│   ├── fingerprints/             Unified (model_id, revision) -> sha256 registry, format=safetensors|gguf, primary_file names the anchored artifact
 │   │   ├── index.json
 │   │   └── <model>__<rev>.json   (one per pinned model revision)
 │   ├── mlx-sidecar/              Apple Silicon dev/demo path (mlx-vlm)
 │   │   └── start.sh              Wraps `mlx_vlm.server --model ... --port 8080`
 │   ├── mistralrs-sidecar/        Cross-platform Rust inference path
+│   │   ├── PINNED.json           Audited upstream commit + per-target SHA-256 of mistralrs-server
+│   │   ├── start.sh              Gates launch on `check-pinned-binary`; refuses on hash mismatch
+│   │   └── tests/start-sh-gate.sh   Integration test that the launch gate works
 │   └── transformers-sidecar/     Cross-platform fallback (transformers + Python)
 │       ├── start.py
 │       └── requirements.txt
 ├── tools/
-│   └── seed-fingerprints/        Fetches HF LFS oid, cross-checks local cache, writes registry
+│   ├── seed-fingerprints/        Fetches HF LFS oid, cross-checks local cache, writes registry
+│   └── check-pinned-binary/      Refuses sidecar launch when an inference binary's SHA-256 does not match PINNED.json
 ├── spec/
 │   ├── manifest-schema.json      JSON Schema for the manifest
 │   ├── incident-schema.json      JSON Schema for the structured incident report

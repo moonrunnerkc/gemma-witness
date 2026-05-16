@@ -117,6 +117,8 @@ The signing payload uses RFC 8785 JCS canonicalization before Ed25519 signing.
 | `inference/mlx-sidecar` | Apple Silicon inference path |
 | `inference/mistralrs-sidecar` | Cross-platform Rust inference path |
 | `inference/transformers-sidecar` | Python fallback inference path |
+| `tools/check-pinned-binary` | Refuses sidecar launch when the inference binary's SHA-256 does not match `PINNED.json` |
+| `tools/seed-fingerprints` | Seeds and re-verifies entries in `inference/fingerprints/` |
 
 ## Implemented features
 
@@ -397,7 +399,11 @@ Fingerprints live in a single registry at `inference/fingerprints/`, embedded in
 
 - `inference/mlx-sidecar` (mlx-vlm): the audio bytes flow into the model via the `input_audio` content part natively.
 - `inference/transformers-sidecar`: now reads audio with torchaudio, resamples to 16 kHz mono in memory, and hands the waveform to the processor under the `audio=` kwarg. The on-disk bytes the manifest hashes are not modified.
-- `inference/mistralrs-sidecar`: audio support depends on the mistral.rs build; treat as text-conditioned until verified for your version.
+- `inference/mistralrs-sidecar`: audio support is gated by `crates/witness-inference/tests/mistralrs_audio_probe.rs`, which sends an OpenAI-standard `input_audio` content part and asserts the response is acoustically informed. The release workflow runs the probe with `WITNESS_MISTRALRS_REQUIRE=1` so a tag cannot land without a working audio path. Hosts running mistral.rs locally should run the probe before sealing.
+
+### Inference binary pinning
+
+`inference/mistralrs-sidecar/PINNED.json` records the audited mistral.rs upstream commit and the SHA-256 of the built `mistralrs-server` binary for every published target triple. The sidecar's `start.sh` delegates to `tools/check-pinned-binary`, which refuses to launch when the hash does not match. `.github/workflows/build-mistralrs.yml` is the only sanctioned path for adding or updating entries: it builds from the pinned commit on a clean runner, hashes the result, and either opens a PR (bootstrap path) or attaches binaries to the GitHub release and verifies reproduction (tag path). A `--allow-local-dev` bypass exists for hosts where no published binary covers the target triple yet; it prints a visible WARNING and is never set on release-gate paths.
 
 ## What you can verify yourself
 
