@@ -28,6 +28,31 @@ use sha2::{Digest, Sha256};
 const HF_API_BASE: &str = "https://huggingface.co/api/models";
 const HF_RESOLVE_BASE: &str = "https://huggingface.co";
 
+#[derive(Parser, Debug, Clone, Copy, clap::ValueEnum)]
+enum FormatArg {
+    Safetensors,
+    Gguf,
+}
+
+impl FormatArg {
+    fn as_registry_str(self) -> &'static str {
+        match self {
+            FormatArg::Safetensors => "safetensors",
+            FormatArg::Gguf => "gguf",
+        }
+    }
+
+    fn default_primary_file(self) -> &'static str {
+        match self {
+            FormatArg::Safetensors => "model.safetensors",
+            // GGUF blobs are not standardized to a single filename; the caller
+            // MUST pass --primary-file naming the actual *.gguf the sidecar
+            // loads. We refuse to guess.
+            FormatArg::Gguf => "",
+        }
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "seed-fingerprints")]
 #[command(about = "Seeds inference/fingerprints/ entries from Hugging Face LFS metadata.")]
@@ -38,10 +63,20 @@ struct Cli {
     /// Hugging Face revision (commit SHA or branch). Defaults to `main`.
     #[arg(long, default_value = "main")]
     revision: String,
-    /// Override the local model.safetensors path. Default: resolved from
-    /// the Hugging Face cache at $HF_HOME / ~/.cache/huggingface.
+    /// Storage format of the model weights this entry pins.
+    #[arg(long, value_enum, default_value_t = FormatArg::Safetensors)]
+    format: FormatArg,
+    /// File path within the model repository that the fingerprint anchors on.
+    /// Defaults to `model.safetensors` for `--format safetensors`. Required
+    /// for `--format gguf` because GGUF filenames are quant-specific and
+    /// cannot be guessed.
     #[arg(long)]
-    safetensors_path: Option<PathBuf>,
+    primary_file: Option<String>,
+    /// Override the local artifact path (safetensors or GGUF). Default for
+    /// `--format safetensors`: resolved from the Hugging Face cache at
+    /// `$HF_HOME` / `~/.cache/huggingface`. Required for `--format gguf`.
+    #[arg(long, alias = "safetensors-path")]
+    artifact_path: Option<PathBuf>,
     /// Repository root. Defaults to the directory containing Cargo.toml.
     #[arg(long)]
     repo_root: Option<PathBuf>,
@@ -75,26 +110,43 @@ async fn real_main() -> Result<()> {
         .or_else(|_| guess_repo_root())
         .context("could not determine repository root. pass --repo-root explicitly")?;
 
-    let lfs = fetch_hf_lfs_pointer(&cli.model_id, &cli.revision)
+    let primary_file = match (cli.primary_file.clone(), cli.format) {
+        (Some(name), _) => name,
+        (None, FormatArg::Safetensors) => cli.format.default_primary_file().to_string(),
+        (None, FormatArg::Gguf) => {
+            bail!(
+                "--format gguf requires --primary-file naming the .gguf blob the sidecar loads. \
+                 GGUF filenames are quantization-specific (e.g. gemma-4-e4b-it.Q4_K_M.gguf); the seeder will not guess."
+            );
+        }
+    };
+
+    let lfs = fetch_hf_lfs_pointer(&cli.model_id, &cli.revision, &primary_file)
         .await
         .with_context(|| {
             format!(
-                "could not fetch HF LFS pointer for {}@{}",
-                cli.model_id, cli.revision
+                "could not fetch HF LFS pointer for {}@{} file {}",
+                cli.model_id, cli.revision, primary_file
             )
         })?;
     println!(
-        "HF LFS oid for {}@{} model.safetensors: sha256={} size={}",
-        cli.model_id, cli.revision, lfs.sha256, lfs.size
+        "HF LFS oid for {}@{} {}: sha256={} size={}",
+        cli.model_id, cli.revision, primary_file, lfs.sha256, lfs.size
     );
 
     let local_hash = if cli.fetch_only {
         None
     } else {
-        let path = match cli.safetensors_path.clone() {
+        let path = match cli.artifact_path.clone() {
             Some(p) => p,
-            None => locate_local_safetensors(&cli.model_id, &cli.revision)
-                .context("could not locate locally cached model.safetensors. pass --safetensors-path or run after the sidecar has downloaded the model")?,
+            None => match cli.format {
+                FormatArg::Safetensors => locate_local_safetensors(&cli.model_id, &cli.revision)
+                    .context("could not locate locally cached model.safetensors. pass --artifact-path or run after the sidecar has downloaded the model")?,
+                FormatArg::Gguf => bail!(
+                    "--format gguf requires --artifact-path pointing at the locally cached .gguf blob. \
+                     GGUF caches do not follow a stable layout the seeder can guess."
+                ),
+            },
         };
         println!("hashing local file: {}", path.display());
         Some(hash_file(&path)?)
@@ -136,8 +188,10 @@ async fn real_main() -> Result<()> {
     let entry = RegistryEntry {
         model_id: cli.model_id.clone(),
         revision: cli.revision.clone(),
+        format: cli.format.as_registry_str().to_string(),
+        primary_file: primary_file.clone(),
         files: vec![RegistryFile {
-            path: "model.safetensors".to_string(),
+            path: primary_file.clone(),
             sha256: Some(lfs.sha256.clone()),
             bytes: Some(lfs.size),
         }],
@@ -149,10 +203,9 @@ async fn real_main() -> Result<()> {
         captured_at_utc: Some(Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
         verified_by: Some(verified_by.to_string()),
         verified_at_utc: Some(Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
-        note: Some(
-            "Seeded by tools/seed-fingerprints. HF LFS oid was cross-checked against the locally recomputed sha256 of model.safetensors before writing."
-                .to_string(),
-        ),
+        note: Some(format!(
+            "Seeded by tools/seed-fingerprints. HF LFS oid was cross-checked against the locally recomputed sha256 of {primary_file} before writing."
+        )),
     };
 
     write_pretty_json(&entry_path, &entry)?;
@@ -177,7 +230,11 @@ struct LfsPointer {
     size: u64,
 }
 
-async fn fetch_hf_lfs_pointer(model_id: &str, revision: &str) -> Result<LfsPointer> {
+async fn fetch_hf_lfs_pointer(
+    model_id: &str,
+    revision: &str,
+    primary_file: &str,
+) -> Result<LfsPointer> {
     let url = format!("{HF_API_BASE}/{model_id}/revision/{revision}?blobs=true");
     let client = reqwest::Client::builder()
         .user_agent("gemma-witness-seed-fingerprints/0.1")
@@ -197,11 +254,18 @@ async fn fetch_hf_lfs_pointer(model_id: &str, revision: &str) -> Result<LfsPoint
         .ok_or_else(|| anyhow!("HF response missing siblings[]"))?;
     let sibling = siblings
         .iter()
-        .find(|s| s.get("rfilename").and_then(|v| v.as_str()) == Some("model.safetensors"))
-        .ok_or_else(|| anyhow!("HF response has no sibling named model.safetensors"))?;
-    let lfs = sibling
-        .get("lfs")
-        .ok_or_else(|| anyhow!("model.safetensors entry has no `lfs` block; the file may not be LFS-tracked at this revision"))?;
+        .find(|s| s.get("rfilename").and_then(|v| v.as_str()) == Some(primary_file))
+        .ok_or_else(|| {
+            anyhow!(
+                "HF response for {model_id}@{revision} has no sibling named {primary_file}. \
+                 Confirm the file exists at that revision; for GGUF blobs, the filename is quant-specific."
+            )
+        })?;
+    let lfs = sibling.get("lfs").ok_or_else(|| {
+        anyhow!(
+            "{primary_file} entry has no `lfs` block; the file may not be LFS-tracked at this revision"
+        )
+    })?;
     let sha256 = lfs
         .get("sha256")
         .and_then(|v| v.as_str())
@@ -285,6 +349,8 @@ fn entry_file_name(model_id: &str, revision: &str) -> String {
 struct RegistryEntry {
     model_id: String,
     revision: String,
+    format: String,
+    primary_file: String,
     files: Vec<RegistryFile>,
     source_url: Option<String>,
     lfs_oid: Option<String>,
@@ -362,17 +428,25 @@ fn regenerate_known_fingerprints(repo_root: &Path) -> Result<()> {
         let entry_path = fingerprints_dir.join(file);
         let raw = std::fs::read_to_string(&entry_path)?;
         let parsed: serde_json::Value = serde_json::from_str(&raw)?;
+        let format = parsed
+            .get("format")
+            .and_then(|v| v.as_str())
+            .unwrap_or("safetensors");
+        let primary_file = parsed
+            .get("primary_file")
+            .and_then(|v| v.as_str())
+            .unwrap_or("model.safetensors");
         let files = parsed
             .get("files")
             .and_then(|v| v.as_array())
             .ok_or_else(|| anyhow!("{} missing files[]", entry_path.display()))?;
-        let safetensors = files
+        let primary = files
             .iter()
-            .find(|f| f.get("path").and_then(|v| v.as_str()) == Some("model.safetensors"));
-        let Some(safetensors) = safetensors else {
+            .find(|f| f.get("path").and_then(|v| v.as_str()) == Some(primary_file));
+        let Some(primary) = primary else {
             continue;
         };
-        let Some(sha) = safetensors.get("sha256").and_then(|v| v.as_str()) else {
+        let Some(sha) = primary.get("sha256").and_then(|v| v.as_str()) else {
             continue;
         };
         let model_id = parsed
@@ -390,6 +464,8 @@ fn regenerate_known_fingerprints(repo_root: &Path) -> Result<()> {
         known.push(serde_json::json!({
             "model_id": model_id,
             "revision": revision,
+            "format": format,
+            "primary_file": primary_file,
             "sha256": sha,
             "added_at": verified_at_utc.unwrap_or(""),
             "verified_by": verified_by.unwrap_or("unverified"),
