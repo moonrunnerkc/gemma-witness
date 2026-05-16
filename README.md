@@ -16,6 +16,8 @@
   <img alt="Status: pre-release" src="https://img.shields.io/badge/status-pre--release-a78bfa?style=flat-square">
 </p>
 
+https://github.com/user-attachments/assets/0276926e-2bd4-4187-8f0d-814119e2762f
+
 ---
 
 ## Why this matters
