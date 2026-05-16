@@ -16,7 +16,13 @@
   <img alt="Status: pre-release" src="https://img.shields.io/badge/status-pre--release-a78bfa?style=flat-square">
 </p>
 
-[Watch the demo video](https://github.com/user-attachments/assets/0276926e-2bd4-4187-8f0d-814119e2762f)
+<p align="center">
+  <video src="https://github.com/moonrunnerkc/gemma-witness/releases/download/demo-v1/demo.mp4" controls width="720" muted playsinline></video>
+</p>
+
+<p align="center">
+  <a href="https://github.com/moonrunnerkc/gemma-witness/releases/download/demo-v1/demo.mp4">▶ Watch the 75-second demo</a>
+</p>
 
 ---
 
