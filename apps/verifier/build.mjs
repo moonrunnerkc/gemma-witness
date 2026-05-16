@@ -28,7 +28,15 @@ async function build() {
   // SHASUMS256.txt covering verify.html.
   const registryVerification = await verifyRegistry();
 
-  // Bundle TypeScript entry point into a single JS string.
+  // Determinism: every esbuild option below is set explicitly so the
+  // output bytes do not depend on environment-derived defaults.
+  // `legalComments: "none"` strips banner comments whose order can drift
+  // across esbuild versions. `charset: "utf8"` keeps unicode literals as
+  // their byte sequences rather than \u-escapes; both choices are valid
+  // but only one is reproducible. With every flag pinned, the SHA-256 of
+  // dist/verify.html is asserted against apps/verifier/expected-output-hash.txt
+  // in CI and any drift surfaces as a build failure rather than as a
+  // mystery release-artifact mismatch.
   const esbuild = await import("esbuild");
   const result = await esbuild.build({
     entryPoints: [path.join(__dirname, "verify.ts")],
@@ -37,7 +45,14 @@ async function build() {
     format: "iife",
     target: "es2022",
     minify: true,
+    minifyWhitespace: true,
+    minifySyntax: true,
+    minifyIdentifiers: true,
     treeShaking: true,
+    legalComments: "none",
+    charset: "utf8",
+    keepNames: false,
+    sourcemap: false,
   });
 
   const jsBundle = result.outputFiles[0].text;
@@ -109,6 +124,39 @@ async function build() {
     process.exit(1);
   }
   console.log("Static checks passed: no external src/href, no fetch/XHR/importScripts, CSP meta present.");
+
+  // Reproducibility gate. The expected hash is committed to the repo; CI
+  // re-runs this build and asserts the bytes match. Drift surfaces here
+  // rather than as a "release artifact does not match the rebuild"
+  // mystery weeks later. When a real intentional change lands (a noble
+  // bump, a verifier code change), update apps/verifier/expected-output-hash.txt
+  // in the same commit.
+  const expectedHashPath = path.join(__dirname, "expected-output-hash.txt");
+  if (fs.existsSync(expectedHashPath)) {
+    const { createHash } = await import("node:crypto");
+    const actualHash = createHash("sha256").update(htmlText).digest("hex");
+    const expectedHash = fs.readFileSync(expectedHashPath, "utf-8").trim();
+    if (expectedHash && expectedHash !== "PLACEHOLDER") {
+      if (actualHash !== expectedHash) {
+        const drift = process.env.GW_VERIFIER_ALLOW_HASH_DRIFT === "1";
+        const msg = `verifier output hash drift: expected ${expectedHash}, got ${actualHash}.`;
+        if (drift) {
+          console.warn(`WARNING: ${msg} (GW_VERIFIER_ALLOW_HASH_DRIFT=1; not failing)`);
+        } else {
+          console.error(`ERROR: ${msg}`);
+          console.error(
+            "if this change is intentional, update apps/verifier/expected-output-hash.txt with the new hash in the same commit. " +
+            "if this change is unexpected, the build is non-reproducible and the cause must be diagnosed before tagging.",
+          );
+          process.exit(1);
+        }
+      } else {
+        console.log(`Reproducibility check passed: SHA-256 ${actualHash}`);
+      }
+    } else {
+      console.log(`Reproducibility check skipped (expected hash is placeholder). Actual SHA-256 ${actualHash}`);
+    }
+  }
 }
 
 build().catch((err) => {

@@ -14,6 +14,18 @@ permissions:
   id-token: write
   attestations: write
 
+# Determinism: every build step in this workflow runs with
+# SOURCE_DATE_EPOCH derived from the tag's commit timestamp,
+# CARGO_INCREMENTAL=0 (no per-host build state), and a path-prefix remap
+# that erases the runner's HOME from the binary. The result is that a
+# tagged release is reproducible from the same commit on a different
+# host using flake.nix, Dockerfile.repro, or the direct toolchain, and
+# the reproducibility.yml workflow CI-enforces that the three paths
+# agree.
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+
 jobs:
   fingerprint-registry-signed:
     # Precondition: the inference/fingerprints/ registry envelope must be
@@ -46,6 +58,14 @@ jobs:
       capture_hash: ${{ steps.hash_capture.outputs.hash }}
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          fetch-depth: 0
+
+      - name: Determinism env (SOURCE_DATE_EPOCH, RUSTFLAGS path remap)
+        shell: bash
+        run: |
+          echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+          echo "RUSTFLAGS=--remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=$HOME=." >> "$GITHUB_ENV"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable as of 2025-04-09

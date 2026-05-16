@@ -1,0 +1,178 @@
+name: Reproducibility
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/**"
+      - "apps/verifier/**"
+      - "tools/**"
+      - "flake.nix"
+      - "flake.lock"
+      - "Dockerfile.repro"
+      - ".github/workflows/reproducibility.yml"
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/**"
+      - "apps/verifier/**"
+      - "tools/**"
+      - "flake.nix"
+      - "flake.lock"
+      - "Dockerfile.repro"
+      - ".github/workflows/reproducibility.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  direct-toolchain:
+    name: Build with the pinned host toolchain
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable as of 2025-04-09
+        with:
+          toolchain: 1.80.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+
+      - name: Compute SOURCE_DATE_EPOCH from commit
+        id: epoch
+        run: echo "value=$(git log -1 --format=%ct)" >> "$GITHUB_OUTPUT"
+
+      - name: Build verifier (deterministic flags)
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.epoch.outputs.value }}
+        working-directory: apps/verifier
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Assert verifier hash matches committed expectation
+        run: |
+          expected=$(cat apps/verifier/expected-output-hash.txt)
+          actual=$(sha256sum apps/verifier/dist/verify.html | cut -d' ' -f1)
+          echo "expected=$expected"
+          echo "actual=$actual"
+          if [ "$expected" = "PLACEHOLDER" ]; then
+            echo "::warning::expected-output-hash.txt is the placeholder; cannot enforce reproducibility yet."
+            exit 0
+          fi
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::verifier hash drift; rebuild on a clean checkout reproduced a different SHA-256 than expected-output-hash.txt records. either the build is non-reproducible (file an investigation issue) or a code change is missing a matching hash bump in the same commit."
+            exit 1
+          fi
+
+      - name: Build the witness-cli release binary
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.epoch.outputs.value }}
+          RUSTFLAGS: "--remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${HOME}=."
+        run: |
+          cargo build --locked --release -p witness-cli
+
+      - name: Record witness-cli hash
+        run: |
+          actual=$(sha256sum target/release/witness-cli | cut -d' ' -f1)
+          echo "witness-cli SHA-256 = $actual"
+          if [ -f crates/witness-cli/expected-output-hash.txt ]; then
+            expected=$(cat crates/witness-cli/expected-output-hash.txt)
+            if [ "$expected" = "PLACEHOLDER" ]; then
+              echo "::notice::witness-cli expected-output-hash.txt is the placeholder; recording $actual without enforcement."
+              exit 0
+            fi
+            if [ "$expected" != "$actual" ]; then
+              echo "::error::witness-cli hash drift; rebuild reproduced $actual but expected $expected."
+              exit 1
+            fi
+          fi
+
+  docker-build:
+    name: Build inside Dockerfile.repro
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          fetch-depth: 0
+
+      - name: Build the repro image
+        run: docker build -f Dockerfile.repro -t gw-repro .
+
+      - name: Extract SHASUMS256.txt from the image
+        run: |
+          container=$(docker create gw-repro)
+          docker cp "$container:/artifacts/SHASUMS256.txt" /tmp/docker-shasums.txt
+          docker cp "$container:/artifacts/verify.html" /tmp/docker-verify.html
+          docker rm "$container"
+          cat /tmp/docker-shasums.txt
+
+      - name: Cross-check the verifier hash against the host build
+        run: |
+          docker_hash=$(sha256sum /tmp/docker-verify.html | cut -d' ' -f1)
+          expected=$(cat apps/verifier/expected-output-hash.txt)
+          echo "docker_hash=$docker_hash"
+          echo "expected=$expected"
+          if [ "$expected" = "PLACEHOLDER" ]; then
+            echo "::warning::expected-output-hash.txt is the placeholder; cannot enforce reproducibility yet."
+            exit 0
+          fi
+          if [ "$expected" != "$docker_hash" ]; then
+            echo "::error::Docker build produced a verifier with a different SHA-256 than the host build; the build environment differs in a way that breaks reproducibility."
+            exit 1
+          fi
+
+  nix-build:
+    name: Build inside the Nix flake
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@08dcb3a5e62fa31e2da3d490afc4176ef55ecd72 # v30
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: nix flake check
+        run: nix flake check --no-build
+
+      - name: Build verifier through the flake
+        run: nix build .#verifier-html
+
+      - name: Cross-check the Nix-built verifier hash
+        run: |
+          nix_hash=$(sha256sum result/verify.html | cut -d' ' -f1)
+          expected=$(cat apps/verifier/expected-output-hash.txt)
+          echo "nix_hash=$nix_hash"
+          echo "expected=$expected"
+          if [ "$expected" = "PLACEHOLDER" ]; then
+            echo "::warning::expected-output-hash.txt is the placeholder; cannot enforce reproducibility yet."
+            exit 0
+          fi
+          if [ "$expected" != "$nix_hash" ]; then
+            echo "::error::Nix build produced a verifier with a different SHA-256 than the host build."
+            exit 1
+          fi

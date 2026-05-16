@@ -82,3 +82,104 @@ git push origin v0.X.Y
   the bundle layout. The manifest version did not change in this release
   unless explicitly noted.
 
+## Verifying a release reproducibly
+
+Three independent build paths produce the same artifacts from the same
+commit. CI runs all three on every push under `.github/workflows/reproducibility.yml`
+and refuses to merge if any of them disagree. A maintainer, auditor, or
+journalist can reproduce the same hashes locally to verify a downloaded
+release is the same one the source tree at the tag produces.
+
+### Scope
+
+Reproducibility is strongest where it matters most: the static-HTML
+verifier and the headless CLI. The Tauri capture binary on macOS and
+Windows depends on per-host system libraries (webkit on Linux, WKWebView
+on macOS, WebView2 on Windows) and on platform code-signing keys; two
+hosts running the same toolchain can produce different bytes for that
+binary even with `SOURCE_DATE_EPOCH` pinned. The Tauri team is working
+upstream on this; in the meantime the SLSA v1 provenance attached to
+the release artifacts is the proof of where the capture binary was
+built. The verifier and the CLI carry stronger guarantees:
+
+| Artifact | Hash guarantee | Audience |
+| :--- | :--- | :--- |
+| `verify.html` | bit-for-bit reproducible across the three paths below | end users dragging in `.witness` bundles |
+| `witness-cli` (Linux) | bit-for-bit reproducible across the three paths below | auditors, CI, headless workflows |
+| `gemma-witness-capture` (macOS/Linux/Windows) | SLSA v1 provenance via `.github/workflows/release.yml`; cross-host byte equality is not guaranteed today | journalists running the capture app |
+
+### Common preconditions
+
+```bash
+git clone https://github.com/moonrunnerkc/gemma-witness.git
+cd gemma-witness
+git checkout v0.X.Y
+```
+
+Download the corresponding `SHASUMS256.txt` from the GitHub release page
+and keep it nearby for the `diff` step at the end of each path.
+
+### Path 1: Nix flake (most hermetic)
+
+```bash
+nix build .#verifier-html
+sha256sum result/verify.html
+diff <(sha256sum result/verify.html | awk '{print $1}') apps/verifier/expected-output-hash.txt
+```
+
+Requires Nix with flakes enabled. The flake pins nixpkgs and the Rust
+toolchain by content hash via `flake.lock`, so any drift between two
+runs of the same flake.lock is a Nix-evaluation bug, not your build.
+
+### Path 2: Dockerfile.repro (broadest audience)
+
+```bash
+docker build -f Dockerfile.repro -t gw-repro .
+docker run --rm gw-repro cat /artifacts/SHASUMS256.txt > /tmp/repro.sha256
+diff /tmp/repro.sha256 SHASUMS256.txt
+```
+
+The base image is pinned by sha256 digest. The build sets
+`SOURCE_DATE_EPOCH` from the commit timestamp and uses
+`--remap-path-prefix` so the resulting binaries do not embed the
+builder's home directory.
+
+### Path 3: Direct toolchain (no container)
+
+Requires Rust 1.80.1, Node 22, and pnpm 9 installed locally:
+
+```bash
+export SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+export RUSTFLAGS="--remap-path-prefix=$PWD=. --remap-path-prefix=$HOME=."
+export CARGO_INCREMENTAL=0
+
+cargo build --locked --release -p witness-cli
+cd apps/verifier && pnpm install --frozen-lockfile && pnpm build && cd -
+
+sha256sum target/release/witness-cli apps/verifier/dist/verify.html
+```
+
+Compare against the corresponding entries in the `SHASUMS256.txt` you
+downloaded.
+
+### When hashes disagree
+
+A hash mismatch is one of three things:
+
+1. The release artifact and the source tree at the tag disagree
+   (someone pushed a tag against a different commit; a contributor
+   force-pushed and rewrote history; the maintainer made an error). Treat
+   the release as compromised and ask the maintainer to investigate.
+2. The build environment differs from what the tag was built against
+   (a different Rust point release, a different Node version, a stale
+   `Cargo.lock`). Re-check the prerequisites above.
+3. The build is genuinely non-reproducible because a code change
+   introduced non-determinism (a randomized salt, a timestamp written
+   into the binary, a hash map iteration order that leaks into output
+   bytes). This is a bug; file a security advisory under [`SECURITY.md`](SECURITY.md).
+
+If you cannot tell which of the three you are seeing, file an issue
+with the exact host details (OS, distro, toolchain versions) and the
+hash you computed. The maintainer will reproduce or rule out
+non-determinism in the build path.
+

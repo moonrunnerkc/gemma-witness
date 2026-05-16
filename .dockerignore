@@ -1,0 +1,15 @@
+target
+**/target
+**/node_modules
+**/dist
+**/.next
+**/.svelte-kit
+crates/witness-core/fuzz/artifacts
+crates/witness-core/fuzz/corpus
+crates/witness-core/fuzz/coverage
+crates/witness-core/fuzz/target
+.git/objects/pack/tmp_*
+evidence/day1
+.DS_Store
+demo-tampered-byte.witness
+*.witness

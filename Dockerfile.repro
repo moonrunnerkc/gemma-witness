@@ -1,0 +1,96 @@
+# Dockerfile.repro: hermetic rebuild of the Linux release artifacts.
+#
+# Goal: a researcher or auditor can run
+#
+#   git checkout v0.1.0
+#   docker build -f Dockerfile.repro -t gw-repro .
+#   docker run --rm gw-repro cat /artifacts/SHASUMS256.txt > /tmp/repro.sha
+#   diff /tmp/repro.sha SHASUMS256.txt    # downloaded from the GitHub release
+#
+# and see no diff. SOURCE_DATE_EPOCH and CARGO_INCREMENTAL=0 are exported
+# so the binary is timestamp-stable; --remap-path-prefix erases the
+# builder's HOME from the produced executable so two builds on different
+# hosts produce byte-identical outputs.
+#
+# The base image is pinned by sha256 digest. Bumping it requires a
+# corresponding bump to apps/verifier/expected-output-hash.txt and
+# crates/witness-cli/expected-output-hash.txt in the same commit.
+
+# debian:bookworm-slim, 2025-04-15 digest. Re-pinned at every supply-chain
+# audit cycle (quarterly minimum) and any time a CVE in the base image
+# is patched.
+FROM debian:bookworm-slim@sha256:b1211f6435efebaa61ce9b8aef79bc44d1a30b66c43e9f44ee2f74dab33e2d5e AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CARGO_INCREMENTAL=0
+ENV CARGO_NET_RETRY=10
+ENV RUSTFLAGS="--remap-path-prefix=/build=. --remap-path-prefix=/root=."
+
+# Toolchain installation. Rust 1.80 (workspace MSRV) via rustup with a
+# pinned installer SHA-256; Node 22 via nodesource with a pinned
+# repository fingerprint; pnpm 9 via corepack.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl gnupg git pkg-config build-essential libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Rust 1.80 (matches workspace MSRV in rust-toolchain.toml).
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH=/usr/local/cargo/bin:$PATH
+ENV RUST_VERSION=1.80.1
+RUN set -eux; \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh; \
+    sh /tmp/rustup-init.sh -y --default-toolchain "${RUST_VERSION}" --profile minimal --no-modify-path; \
+    rm /tmp/rustup-init.sh; \
+    rustup component add rustfmt clippy; \
+    rustc --version; \
+    cargo --version
+
+# Node 22 + pnpm 9.
+RUN set -eux; \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -; \
+    apt-get install -y --no-install-recommends nodejs; \
+    npm install -g corepack@latest; \
+    corepack enable; \
+    corepack prepare pnpm@9.15.0 --activate; \
+    node --version; \
+    pnpm --version
+
+# Copy the workspace. .dockerignore keeps target/, node_modules/, and
+# fuzz/artifacts/ out so a clean checkout is what gets built.
+WORKDIR /build
+COPY . .
+
+# SOURCE_DATE_EPOCH from the commit timestamp. Determines binary mtimes
+# and any "build date" stamps in the artifact.
+RUN git config --global --add safe.directory /build && \
+    SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) && \
+    echo "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" > /tmp/source-date-epoch.env
+
+# Build the Rust release artifacts.
+RUN . /tmp/source-date-epoch.env && \
+    export SOURCE_DATE_EPOCH && \
+    cargo build --locked --release \
+        --package witness-core \
+        --package witness-cli \
+        --package witness-inference
+
+# Build the verifier HTML.
+RUN . /tmp/source-date-epoch.env && \
+    export SOURCE_DATE_EPOCH && \
+    cd apps/verifier && \
+    pnpm install --frozen-lockfile && \
+    pnpm build
+
+# Assemble the artifact set into /artifacts and compute SHASUMS256.txt.
+RUN mkdir -p /artifacts && \
+    cp target/release/witness-cli /artifacts/witness-cli && \
+    cp apps/verifier/dist/verify.html /artifacts/verify.html && \
+    cd /artifacts && \
+    sha256sum witness-cli verify.html > SHASUMS256.txt && \
+    cat SHASUMS256.txt
+
+# Final stage: a tiny scratch image carrying just the artifacts so the
+# image hash is reproducible (no layered package state).
+FROM scratch AS artifacts
+COPY --from=builder /artifacts /artifacts

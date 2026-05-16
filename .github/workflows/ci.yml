@@ -8,6 +8,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Determinism: incremental compilation is per-host state that breaks
+  # reproducibility; release.yml and reproducibility.yml depend on
+  # cargo behaving identically across runners.
+  CARGO_INCREMENTAL: "0"
 
 jobs:
   rust-checks:
