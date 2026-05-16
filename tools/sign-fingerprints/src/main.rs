@@ -1,18 +1,18 @@
 //! CLI around `witness-fingerprint-verify`. Three subcommands gate the
 //! lifecycle of `inference/fingerprints/registry-manifest.json`:
 //!
-//! - `recompute`  rebuilds the envelope from on-disk state. Always writes
-//!                with `placeholder=true`; flipping the flag is the
-//!                signing workflow's job.
-//! - `verify`     content gate (and, if the envelope claims
-//!                `placeholder=false`, signature gate too). Used by
-//!                `crates/witness-fingerprints/build.rs` and by CI
-//!                wherever the envelope's authenticity matters.
-//! - `flip-placeholder`
-//!                editorial-only step run by the signing workflow after
-//!                `cosign sign-blob` produces `registry-manifest.sigstore`.
-//!                Sets `placeholder=false`, fills `signed_at_utc`, drops
-//!                `placeholder_reason`, and writes the envelope back.
+//! - `recompute`: rebuilds the envelope from on-disk state. Always
+//!   writes with `placeholder=true`; finalizing is the signing
+//!   workflow's job.
+//! - `finalize`: editorial step run by the signing workflow immediately
+//!   before `cosign sign-blob`. Recomputes from on-disk state, sets
+//!   `placeholder=false`, fills `signed_at_utc`, drops
+//!   `placeholder_reason`, and writes the envelope back. The bytes the
+//!   workflow signs are the bytes this step produces.
+//! - `verify`: content gate (and, if the envelope claims
+//!   `placeholder=false`, signature gate too). Used by
+//!   `crates/witness-fingerprints/build.rs` and by CI wherever the
+//!   envelope's authenticity matters.
 
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::Utc;
@@ -61,11 +61,12 @@ enum Command {
         #[arg(long)]
         require_signed: bool,
     },
-    /// Editorial step run by the signing workflow once cosign has
-    /// produced registry-manifest.sigstore. Writes back an envelope with
-    /// placeholder=false, fills signed_at_utc, and drops
-    /// placeholder_reason.
-    FlipPlaceholder {
+    /// Editorial step the signing workflow runs immediately before
+    /// `cosign sign-blob`. Recomputes from on-disk state, flips
+    /// placeholder to false, fills signed_at_utc, drops
+    /// placeholder_reason, and writes the envelope back. The bytes
+    /// cosign signs are the bytes this command writes.
+    Finalize {
         #[arg(long, default_value = "inference/fingerprints")]
         registry_dir: PathBuf,
     },
@@ -79,7 +80,7 @@ fn main() -> Result<()> {
             registry_dir,
             require_signed,
         } => run_verify(&registry_dir, require_signed),
-        Command::FlipPlaceholder { registry_dir } => run_flip_placeholder(&registry_dir),
+        Command::Finalize { registry_dir } => run_finalize(&registry_dir),
     }
 }
 
@@ -122,33 +123,20 @@ fn run_verify(registry_dir: &std::path::Path, require_signed: bool) -> Result<()
     Ok(())
 }
 
-fn run_flip_placeholder(registry_dir: &std::path::Path) -> Result<()> {
-    let mut manifest = load_manifest(registry_dir).with_context(|| {
-        format!(
-            "could not load {}",
-            registry_dir.join(REGISTRY_MANIFEST_FILENAME).display()
-        )
-    })?;
-    if !manifest.placeholder {
-        eprintln!("envelope already has placeholder=false; no change");
-        return Ok(());
-    }
-    verify_consistency(registry_dir, &manifest)
-        .map_err(|e| anyhow!("refusing to flip placeholder: content gate failed: {e}"))?;
-    let bundle_path = registry_dir.join(witness_fingerprint_verify::REGISTRY_BUNDLE_FILENAME);
-    if !bundle_path.exists() {
-        bail!(
-            "refusing to flip placeholder: {} does not exist. \
-             run cosign sign-blob first",
-            bundle_path.display()
-        );
-    }
+fn run_finalize(registry_dir: &std::path::Path) -> Result<()> {
+    // Always recompute from on-disk state first so the finalized envelope
+    // matches the actual registry. A divergence between the envelope and
+    // disk would mean cosign signs bytes that no longer match the files
+    // the verifier later hashes.
+    let mut manifest = compute_manifest(registry_dir)
+        .with_context(|| format!("could not recompute manifest from {}", registry_dir.display()))?;
     manifest.placeholder = false;
     manifest.placeholder_reason = None;
     manifest.signed_at_utc = Some(Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
     write_manifest(registry_dir, &manifest)?;
     eprintln!(
-        "flipped placeholder=false on {}; signed_at_utc={}",
+        "finalized {}: placeholder=false, signed_at_utc={}. \
+         next step is `cosign sign-blob --bundle registry-manifest.sigstore registry-manifest.json`.",
         registry_dir.join(REGISTRY_MANIFEST_FILENAME).display(),
         manifest.signed_at_utc.as_deref().unwrap_or("(none)")
     );

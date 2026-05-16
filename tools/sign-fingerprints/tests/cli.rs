@@ -112,45 +112,12 @@ fn verify_fails_when_a_new_file_is_added_after_signing() {
 }
 
 #[test]
-fn flip_placeholder_refuses_without_bundle() {
+fn finalize_rewrites_envelope_with_placeholder_false_and_signed_at_utc() {
     let dir = TempDir::new().expect("tempdir");
     seed_registry(dir.path());
     Command::cargo_bin("sign-fingerprints")
         .expect("bin")
-        .args(["recompute", "--registry-dir"])
-        .arg(dir.path())
-        .assert()
-        .success();
-    Command::cargo_bin("sign-fingerprints")
-        .expect("bin")
-        .args(["flip-placeholder", "--registry-dir"])
-        .arg(dir.path())
-        .assert()
-        .failure()
-        .stderr(contains("registry-manifest.sigstore"));
-}
-
-#[test]
-fn flip_placeholder_succeeds_with_bundle_present_and_rewrites_envelope() {
-    let dir = TempDir::new().expect("tempdir");
-    seed_registry(dir.path());
-    Command::cargo_bin("sign-fingerprints")
-        .expect("bin")
-        .args(["recompute", "--registry-dir"])
-        .arg(dir.path())
-        .assert()
-        .success();
-    // Synthesize a bundle file. Its contents are not checked by
-    // flip-placeholder; signature validation happens later, in
-    // verify --require-signed against a real cosign output.
-    fs::write(
-        dir.path().join("registry-manifest.sigstore"),
-        b"{\"placeholder-bundle\":true}",
-    )
-    .expect("write bundle");
-    Command::cargo_bin("sign-fingerprints")
-        .expect("bin")
-        .args(["flip-placeholder", "--registry-dir"])
+        .args(["finalize", "--registry-dir"])
         .arg(dir.path())
         .assert()
         .success();
@@ -158,9 +125,32 @@ fn flip_placeholder_succeeds_with_bundle_present_and_rewrites_envelope() {
         fs::read_to_string(dir.path().join("registry-manifest.json")).expect("read envelope");
     assert!(envelope.contains("\"placeholder\":false"));
     assert!(envelope.contains("\"signed_at_utc\""));
-    // placeholder_reason must be omitted from the canonical bytes.
     assert!(
         !envelope.contains("\"placeholder_reason\""),
-        "placeholder_reason must not survive the flip: {envelope}"
+        "placeholder_reason must not survive finalize: {envelope}"
     );
+}
+
+#[test]
+fn finalize_then_verify_refuses_without_a_real_signature_bundle() {
+    // finalize alone is not enough; verify --require-signed must still
+    // fail until cosign produces registry-manifest.sigstore. This is the
+    // gate that protects against a workflow regression that finalizes
+    // but forgets to actually run cosign sign-blob.
+    let dir = TempDir::new().expect("tempdir");
+    seed_registry(dir.path());
+    Command::cargo_bin("sign-fingerprints")
+        .expect("bin")
+        .args(["finalize", "--registry-dir"])
+        .arg(dir.path())
+        .assert()
+        .success();
+    Command::cargo_bin("sign-fingerprints")
+        .expect("bin")
+        .args(["verify", "--registry-dir"])
+        .arg(dir.path())
+        .arg("--require-signed")
+        .assert()
+        .failure()
+        .stderr(contains("signature gate failed"));
 }
