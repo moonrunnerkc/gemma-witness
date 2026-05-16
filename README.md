@@ -20,9 +20,9 @@
   <video src="https://files.catbox.moe/90zlt6.mp4" controls width="720" muted playsinline></video>
 </p>
 
-<p align="center">
-  <a href="https://files.catbox.moe/90zlt6.mp4">▶ Watch the 75-second demo</a>
-</p>
+
+https://github.com/user-attachments/assets/54227701-3b6c-48cd-a78f-a3af28a2db09
+
 
 ---
 
