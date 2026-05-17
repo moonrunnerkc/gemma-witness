@@ -40,17 +40,10 @@
 
 use std::sync::Mutex;
 
-use base64::Engine;
-use core_foundation::base::TCFType;
-use core_foundation::data::CFData;
-use core_foundation::error::{CFError, CFErrorRef};
-use core_foundation::string::CFStringRef;
-use core_foundation_sys::data::CFDataRef;
 use p256::pkcs8::der::pem::LineEnding;
 use p256::pkcs8::EncodePublicKey;
 use p256::PublicKey;
 use security_framework::key::{Algorithm, GenerateKeyOptions, KeyType, SecKey, Token};
-use security_framework_sys::base::SecKeyRef;
 
 use crate::error::WitnessCoreError;
 use crate::key_provider::{KeyProvider, PublicKeyHandle, SigningAlgorithm};
@@ -61,29 +54,17 @@ use crate::signing_ecdsa::key_id;
 /// `apple-sep-v1` tag the manifest spec lists.
 pub const SEP_ATTESTATION_FORMAT: &str = "apple-sep-v1";
 
-// FFI bindings for the SEP attestation surface. These symbols ship in every
-// macOS 10.12+ Security.framework and are documented in Apple's reference,
-// but `security-framework` 3.6 does not expose them through its safe API.
-//
-//   SecKeyRef  SecKeyCopyAttestationKey(SecKeyAttestationKeyType keyType,
-//                                        CFErrorRef *error);
-//   CFDataRef  SecKeyCreateAttestation(SecKeyRef key, SecKeyRef keyToAttest,
-//                                       CFErrorRef *error);
-//
-// Both calls require the `com.apple.security.attestation.access` entitlement
-// and a notarized binary. Unsigned development builds receive a non-NULL
-// `CFError` and we map that to "attestation unavailable on this host"
-// rather than failing the seal: WS3-1 makes the field informational.
-#[link(name = "Security", kind = "framework")]
-extern "C" {
-    fn SecKeyCopyAttestationKey(key_type: CFStringRef, error: *mut CFErrorRef) -> SecKeyRef;
-    fn SecKeyCreateAttestation(
-        key: SecKeyRef,
-        key_to_attest: SecKeyRef,
-        error: *mut CFErrorRef,
-    ) -> CFDataRef;
-    static kSecKeyAttestationKeyTypeSIK: CFStringRef;
-}
+// SEP attestation FFI used to live here, calling `SecKeyCopyAttestationKey`
+// with `kSecKeyAttestationKeyTypeSIK`. The constant ships in the iOS SDK
+// but is not exported by `Security.framework` on macOS (verified against
+// `MacOSX.sdk/.../Security.tbd` on SDK 26.5: `_SecKeyCopyAttestationKey`
+// and `_SecKeyCreateAttestation` are present, `_kSecKeyAttestationKeyTypeSIK`
+// is absent), so binaries that referenced it failed at link time.
+// `attest_sep_key` therefore returns `None` on macOS; SEP-backed signing
+// still works through `security-framework`'s safe API, the attestation
+// field stays as the manifest spec's optional `apple-sep-v1` slot, and a
+// dedicated DeviceCheck/App Attest path can fill it later without touching
+// the seal flow.
 
 /// Hardware-backed [`KeyProvider`] that anchors the signing key in the
 /// Apple Secure Enclave.
@@ -176,77 +157,18 @@ impl KeyProvider for SecureEnclaveProvider {
     }
 }
 
-/// Attempt to read the SEP attestation payload for `key_to_attest`.
+/// Read the SEP attestation payload for `key_to_attest`.
 ///
-/// Returns `Some(SignerAttestation { format: "apple-sep-v1", payload_b64 })`
-/// when the system attestation key is reachable and produces a payload,
-/// and `None` otherwise. Most dev hosts (unsigned binaries, missing
-/// `com.apple.security.attestation.access` entitlement) hit the `None`
-/// path; that is the supported behaviour and not a seal failure.
-///
-/// We don't surface the CFError back to the caller because attestation is
-/// strictly informational under the WS3-1 spec: a missing blob does not
-/// gate verification, it just means the bundle's signer cannot prove its
-/// hardware lineage. Surfacing the error would force the seal path to
-/// branch on entitlement state, which is exactly the coupling the
-/// "informational" framing was chosen to avoid.
-fn attest_sep_key(key_to_attest: &SecKey) -> Option<SignerAttestation> {
-    let system_key = load_system_attestation_key()?;
-    let payload = sec_key_create_attestation(&system_key, key_to_attest)?;
-    Some(SignerAttestation {
-        format: SEP_ATTESTATION_FORMAT.to_string(),
-        payload_b64: base64::engine::general_purpose::STANDARD.encode(&payload),
-        certificate_chain_b64: None,
-    })
-}
-
-/// Load the SEP attestation root that signs `SecKeyCreateAttestation`
-/// payloads. Apple exposes this via `SecKeyCopyAttestationKey` keyed by
-/// `kSecKeyAttestationKeyTypeSIK` (System Integrity Key) on iOS, but on
-/// macOS the standard pattern is to call `SecKeyCreateAttestation` with
-/// the SIK obtained the same way. The lookup requires the
-/// `com.apple.security.attestation.access` entitlement; unsigned dev
-/// binaries get `None` back and `attest_sep_key` falls through.
-///
-/// The FFI surface is intentionally minimal: we only need a non-NULL
-/// `SecKey` ref to pass as the first argument of `SecKeyCreateAttestation`.
-/// If we cannot get one we cannot produce a payload, so this function is
-/// the single source of "attestation unavailable" on this host.
-fn load_system_attestation_key() -> Option<SecKey> {
-    let mut error: CFErrorRef = std::ptr::null_mut();
-    let raw = unsafe { SecKeyCopyAttestationKey(kSecKeyAttestationKeyTypeSIK, &mut error) };
-    if raw.is_null() {
-        if !error.is_null() {
-            unsafe {
-                let _ = CFError::wrap_under_create_rule(error);
-            }
-        }
-        return None;
-    }
-    Some(unsafe { SecKey::wrap_under_create_rule(raw) })
-}
-
-/// Call `SecKeyCreateAttestation(system_key, key_to_attest)` and return
-/// the payload bytes if it succeeds.
-fn sec_key_create_attestation(system_key: &SecKey, key_to_attest: &SecKey) -> Option<Vec<u8>> {
-    let mut error: CFErrorRef = std::ptr::null_mut();
-    let data_ref = unsafe {
-        SecKeyCreateAttestation(
-            system_key.as_concrete_TypeRef(),
-            key_to_attest.as_concrete_TypeRef(),
-            &mut error,
-        )
-    };
-    if data_ref.is_null() {
-        if !error.is_null() {
-            unsafe {
-                let _ = CFError::wrap_under_create_rule(error);
-            }
-        }
-        return None;
-    }
-    let cf_data = unsafe { CFData::wrap_under_create_rule(data_ref) };
-    Some(cf_data.bytes().to_vec())
+/// Returns `None` on macOS: the `SecKeyCopyAttestationKey` /
+/// `SecKeyCreateAttestation` pair the iOS SDK uses for SEP attestation
+/// (keyed by `kSecKeyAttestationKeyTypeSIK`) is not exported on macOS, so
+/// no attestation blob can be produced here. The manifest's
+/// `signer.attestation` field is optional under the schema, so omitting
+/// it is the spec-conformant outcome rather than a seal failure. When a
+/// dedicated macOS attestation path lands (DeviceCheck or App Attest), it
+/// can populate this without touching the seal flow above.
+fn attest_sep_key(_key_to_attest: &SecKey) -> Option<SignerAttestation> {
+    None
 }
 
 /// Ask the SEP to mint a fresh, non-persistent P-256 keypair.

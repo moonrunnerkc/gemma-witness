@@ -93,8 +93,25 @@ export type SealedBundle = {
 	bundleId: string,
 	signerKeyId: string,
 	path: string,
+	/**
+	 *  `"ed25519"` for software-only seals, `"ecdsa-p256"` when the bundle
+	 *  was sealed by a hardware-backed provider (Secure Enclave today;
+	 *  TPM/NCrypt later). The UI uses this to decide whether to display
+	 *  the "software-only seal" warning banner.
+	 */
 	signerAlgorithm: string,
+	/**
+	 *  True when the capture app fell back to a software signer because
+	 *  the platform's hardware backend was unavailable. The UI raises a
+	 *  banner so the user knows the bundle does not carry hardware
+	 *  provenance. Always true on Linux and Windows today.
+	 */
 	softwareFallback: boolean,
+	/**
+	 *  Human-readable explanation of which backend produced the seal and,
+	 *  when `software_fallback == true`, what went wrong with the hardware
+	 *  attempt. Echoed verbatim into the UI; do not localize.
+	 */
 	signerBackendNote: string,
 };
 

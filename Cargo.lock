@@ -7272,8 +7272,6 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
- "core-foundation 0.10.1",
- "core-foundation-sys",
  "ed25519-dalek",
  "hex",
  "hound",
@@ -7286,7 +7284,6 @@ dependencies = [
  "rustfft",
  "schemars 0.8.22",
  "security-framework 3.6.0",
- "security-framework-sys",
  "serde",
  "serde_jcs",
  "serde_json",
