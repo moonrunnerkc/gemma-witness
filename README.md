@@ -26,6 +26,20 @@ https://github.com/user-attachments/assets/54227701-3b6c-48cd-a78f-a3af28a2db09
 
 ---
 
+<p align="center">
+  <a href="#why-this-matters">Why</a> ·
+  <a href="#status">Status</a> ·
+  <a href="#installation">Install</a> ·
+  <a href="#usage">Usage</a> ·
+  <a href="#configuration">Configuration</a> ·
+  <a href="#threat-model">Threat model</a> ·
+  <a href="#current-limitations">Limitations</a> ·
+  <a href="#what-you-can-verify-yourself">Verify yourself</a> ·
+  <a href="#contributing">Contributing</a>
+</p>
+
+---
+
 ## Why this matters
 
 A reporter is working in a country where journalists are detained for their reporting. She records a witness account. She attaches the photos she just took. She seals the file before she leaves the room.
