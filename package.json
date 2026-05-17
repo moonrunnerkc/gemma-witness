@@ -1,0 +1,15 @@
+{
+  "name": "gemma-witness",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Repo-level orchestration scripts. Per-app dependencies live under apps/*.",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "setup": "node scripts/setup.mjs",
+    "verifier:build": "pnpm --dir apps/verifier build",
+    "verifier:open": "pnpm --dir apps/verifier build && open apps/verifier/dist/verify.html"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

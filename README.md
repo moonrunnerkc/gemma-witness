@@ -179,12 +179,34 @@ cosign keyless identity used for releases, with a verification recipe at
 | Requirement | Notes |
 | :--- | :--- |
 | Rust 1.80+ | Workspace MSRV |
-| Node 22 | Used by verifier and capture frontend |
+| Node 22 | Used by verifier, capture frontend, and the root dev orchestrator |
 | pnpm 9 | Used in CI |
 | Python 3.13 | Required for mlx-sidecar |
+| uv | Manages mlx-sidecar's pinned Python deps |
 | Apple Silicon | Required for mlx-vlm path |
 
-### Build
+### Quickstart
+
+From the repository root:
+
+```bash
+pnpm setup    # one-off: installs frontend deps, builds the Rust workspace, syncs mlx sidecar
+pnpm dev      # daily: launches the sidecar and capture app together
+```
+
+`pnpm dev` runs `scripts/dev.mjs`. It issues a fresh per-launch
+`GW_SIDECAR_TOKEN`, starts the configured sidecar in foreground mode and
+the Tauri capture app in parallel (prefixed `[sidecar]` and `[capture]`),
+streams a `sidecar reachable` line once `/v1/models` responds, and tears
+both child process groups down on Ctrl-C.
+
+Default sidecar is `mlx`; override with `GW_SIDECAR_KIND=mistralrs` or
+`GW_SIDECAR_KIND=transformers`.
+
+The per-component build and run commands below remain supported for when
+you want to drive a single piece in isolation.
+
+### Manual build
 
 From the repository root:
 
