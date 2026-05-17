@@ -336,6 +336,8 @@ The verifier build fails if the generated HTML contains:
 | Recording cap | 30 seconds |
 | Manifest schema version | `1` |
 | Key service | `tech.aftermath.gemma-witness` |
+| Model weights path | auto-resolved from the Hugging Face hub cache; override with `WITNESS_MODEL_SAFETENSORS_PATH` |
+| Hub cache root | `$HF_HOME/hub`, else `$HUGGINGFACE_HUB_CACHE`, else `~/.cache/huggingface/hub` |
 
 A `.env.example` file is included for reference.
 

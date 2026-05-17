@@ -405,21 +405,13 @@ fn reveal_path(path: &std::path::Path) -> Result<(), AppError> {
 
 /// Hash `model.safetensors` at seal time and compare against the registry's
 /// pinned SHA-256. The path is taken from
-/// [`WITNESS_MODEL_SAFETENSORS_PATH`] which the operator points at the
-/// sidecar's loaded weights file. Closes audit finding C-13: previously the
-/// seal recorded whatever the registry said the hash was, never the live
-/// model's actual bytes.
+/// [`WITNESS_MODEL_SAFETENSORS_PATH`] when the operator sets it, otherwise
+/// auto-resolved from the Hugging Face hub cache using the registry entry's
+/// `primary_file` and the active revision (see [`resolve_model_path`]).
+/// Closes audit finding C-13: previously the seal recorded whatever the
+/// registry said the hash was, never the live model's actual bytes.
 fn verify_live_model_matches_registry(fp: &ModelFingerprint) -> Result<(), AppError> {
-    let path = match std::env::var(MODEL_SAFETENSORS_ENV) {
-        Ok(p) if !p.is_empty() => std::path::PathBuf::from(p),
-        _ => {
-            return Err(AppError::State {
-                detail: format!(
-                    "{MODEL_SAFETENSORS_ENV} is not set. point it at the model.safetensors file the running sidecar loaded so seal can confirm the live model matches the pinned fingerprint registry entry. see README \"trust model\" section."
-                ),
-            });
-        }
-    };
+    let path = resolve_model_path(fp)?;
     if model_path_claims_expected_hash(&path, &fp.sha256) {
         tracing::info!(
             path = ?path,
@@ -461,6 +453,92 @@ fn verify_live_model_matches_registry(fp: &ModelFingerprint) -> Result<(), AppEr
         });
     }
     Ok(())
+}
+
+/// Resolve the path to the model's primary weights file on disk.
+///
+/// Precedence:
+///   1. [`WITNESS_MODEL_SAFETENSORS_PATH`] env override, when set non-empty.
+///      Operators who downloaded weights outside the HF cache use this.
+///   2. Hugging Face hub cache, constructed deterministically as
+///      `<hub>/models--<sanitized-id>/snapshots/<revision>/<primary_file>`.
+///      The hub root honors `HF_HOME` (with `/hub` appended) and the legacy
+///      `HUGGINGFACE_HUB_CACHE`, falling back to `~/.cache/huggingface/hub`.
+///
+/// Returns a clear error if neither path resolves to an existing file. The
+/// existing symlink short-circuit in [`model_path_claims_expected_hash`]
+/// handles HF's content-addressed blobs, so auto-resolved paths usually
+/// avoid the multi-GB rehash.
+fn resolve_model_path(fp: &ModelFingerprint) -> Result<std::path::PathBuf, AppError> {
+    if let Ok(value) = std::env::var(MODEL_SAFETENSORS_ENV) {
+        if !value.is_empty() {
+            return Ok(std::path::PathBuf::from(value));
+        }
+    }
+
+    let entry =
+        witness_fingerprints::entry(&fp.model_id, &fp.revision).map_err(map_fingerprint_error)?;
+
+    let Some(hub_cache) = huggingface_hub_cache_dir() else {
+        return Err(AppError::State {
+            detail: format!(
+                "could not locate the Hugging Face hub cache to auto-resolve model.safetensors. \
+                 set {MODEL_SAFETENSORS_ENV} to the model file's absolute path, or HF_HOME to the Hugging Face cache root."
+            ),
+        });
+    };
+
+    let snapshot_path = hub_cache
+        .join(format!(
+            "models--{}",
+            sanitize_model_id_for_hf_cache(&fp.model_id)
+        ))
+        .join("snapshots")
+        .join(&fp.revision)
+        .join(&entry.primary_file);
+
+    if !snapshot_path.exists() {
+        return Err(AppError::State {
+            detail: format!(
+                "expected the running sidecar's primary weights file at {} but no such file exists. \
+                 if the sidecar loaded weights from outside the Hugging Face cache, set {MODEL_SAFETENSORS_ENV} to point at the file directly.",
+                snapshot_path.display()
+            ),
+        });
+    }
+
+    tracing::info!(
+        path = %snapshot_path.display(),
+        model_id = %fp.model_id,
+        revision = %fp.revision,
+        primary_file = %entry.primary_file,
+        "auto-resolved model.safetensors path from Hugging Face hub cache"
+    );
+
+    Ok(snapshot_path)
+}
+
+/// Hugging Face's per-model cache directory name is `models--<owner>--<name>`
+/// with the model id's `/` replaced by `--`. Mirrors the layout the
+/// `huggingface_hub` Python library writes.
+fn sanitize_model_id_for_hf_cache(model_id: &str) -> String {
+    model_id.replace('/', "--")
+}
+
+/// Locate the Hugging Face hub cache directory using the same env-var
+/// precedence as the `huggingface_hub` Python library.
+fn huggingface_hub_cache_dir() -> Option<std::path::PathBuf> {
+    if let Ok(home) = std::env::var("HF_HOME") {
+        if !home.is_empty() {
+            return Some(std::path::PathBuf::from(home).join("hub"));
+        }
+    }
+    if let Ok(cache) = std::env::var("HUGGINGFACE_HUB_CACHE") {
+        if !cache.is_empty() {
+            return Some(std::path::PathBuf::from(cache));
+        }
+    }
+    dirs::home_dir().map(|h| h.join(".cache").join("huggingface").join("hub"))
 }
 
 /// Hugging Face snapshot files are symlinks into `hub/.../blobs/<sha256>`.
@@ -592,5 +670,68 @@ mod tests {
         let path = std::path::PathBuf::from(format!("/tmp/blobs/{upper}"));
         assert!(!model_path_claims_expected_hash(&path, &upper));
         assert!(!model_path_claims_expected_hash(&path, "abc"));
+    }
+
+    #[test]
+    fn sanitize_model_id_replaces_slash_with_double_dash() {
+        assert_eq!(
+            sanitize_model_id_for_hf_cache("mlx-community/gemma-4-e4b-it-4bit"),
+            "mlx-community--gemma-4-e4b-it-4bit"
+        );
+        assert_eq!(
+            sanitize_model_id_for_hf_cache("google/gemma-4-E4B-it"),
+            "google--gemma-4-E4B-it"
+        );
+        assert_eq!(
+            sanitize_model_id_for_hf_cache("local-only-model"),
+            "local-only-model"
+        );
+    }
+
+    /// `HF_HOME` should resolve to `<HF_HOME>/hub`, matching the
+    /// `huggingface_hub` Python library's layout.
+    #[test]
+    fn hf_home_resolves_to_hub_subdir() {
+        // Tests use `--test-threads=1` per CLAUDE.md, so single-threaded env
+        // mutation is safe.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let prev_home = std::env::var_os("HF_HOME");
+        let prev_cache = std::env::var_os("HUGGINGFACE_HUB_CACHE");
+        std::env::set_var("HF_HOME", tmp.path());
+        std::env::remove_var("HUGGINGFACE_HUB_CACHE");
+
+        let resolved = huggingface_hub_cache_dir().expect("HF_HOME should resolve");
+        assert_eq!(resolved, tmp.path().join("hub"));
+
+        if let Some(v) = prev_home {
+            std::env::set_var("HF_HOME", v);
+        } else {
+            std::env::remove_var("HF_HOME");
+        }
+        if let Some(v) = prev_cache {
+            std::env::set_var("HUGGINGFACE_HUB_CACHE", v);
+        }
+    }
+
+    /// Legacy `HUGGINGFACE_HUB_CACHE` points directly at the hub directory.
+    #[test]
+    fn legacy_hub_cache_var_resolves_directly() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let prev_home = std::env::var_os("HF_HOME");
+        let prev_cache = std::env::var_os("HUGGINGFACE_HUB_CACHE");
+        std::env::remove_var("HF_HOME");
+        std::env::set_var("HUGGINGFACE_HUB_CACHE", tmp.path());
+
+        let resolved = huggingface_hub_cache_dir().expect("legacy var should resolve");
+        assert_eq!(resolved, tmp.path());
+
+        if let Some(v) = prev_home {
+            std::env::set_var("HF_HOME", v);
+        }
+        if let Some(v) = prev_cache {
+            std::env::set_var("HUGGINGFACE_HUB_CACHE", v);
+        } else {
+            std::env::remove_var("HUGGINGFACE_HUB_CACHE");
+        }
     }
 }
