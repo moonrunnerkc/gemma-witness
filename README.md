@@ -194,13 +194,15 @@ pnpm setup    # one-off: installs frontend deps, builds the Rust workspace, sync
 pnpm dev      # daily: launches the sidecar and capture app together
 ```
 
-`pnpm dev` runs `scripts/dev.mjs`. It issues a fresh per-launch
-`GW_SIDECAR_TOKEN`, starts the configured sidecar in foreground mode and
-the Tauri capture app in parallel (prefixed `[sidecar]` and `[capture]`),
-streams a `sidecar reachable` line once `/v1/models` responds, and tears
-both child process groups down on Ctrl-C.
+`pnpm dev` issues a per-launch `GW_SIDECAR_TOKEN`, exports it, and runs
+`pnpm tauri dev`. The capture app reads that env var and spawns the
+configured sidecar (`inference/<kind>-sidecar/start.sh`) as a child
+process with the same token injected, then kills the child on
+`RunEvent::ExitRequested`. If the configured loopback port is already
+serving on `/v1/models`, the capture app attaches instead of spawning, so
+power users running their own sidecar are not overridden.
 
-Default sidecar is `mlx`; override with `GW_SIDECAR_KIND=mistralrs` or
+Override the sidecar backend with `GW_SIDECAR_KIND=mistralrs` or
 `GW_SIDECAR_KIND=transformers`.
 
 The per-component build and run commands below remain supported for when
@@ -289,6 +291,12 @@ cargo run -p witness-cli -- pipeline \
 ```
 
 ### Capture app
+
+`pnpm dev` from the repo root is the recommended entry point; it issues
+the shared `GW_SIDECAR_TOKEN` and the capture app spawns the sidecar
+itself. You can also drive the capture app directly; it will still spawn
+the sidecar, but without an externally-issued token you lose the ability
+to reuse the same token from a separate `witness-cli` invocation:
 
 ```bash
 cd apps/capture

@@ -11,6 +11,7 @@ use tracing_subscriber::EnvFilter;
 pub mod audio;
 pub mod commands;
 mod error;
+mod sidecar;
 mod state;
 
 use crate::commands::audio_commands::{start_recording_cmd, stop_recording_cmd};
@@ -53,17 +54,27 @@ pub fn run() {
 
     let shared: SharedState = Arc::new(Mutex::new(CaptureState::default()));
     let builder = specta_builder();
+    let sidecar_holder = sidecar::ManagedSidecarHolder(sidecar::ensure_sidecar());
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(shared)
+        .manage(sidecar_holder)
         .setup(|app| {
             install_tracing_subscriber(app.handle())?;
             Ok(())
         })
         .invoke_handler(builder.invoke_handler())
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|handle, event| {
+        if let tauri::RunEvent::ExitRequested { .. } = event {
+            if let Some(holder) = handle.try_state::<sidecar::ManagedSidecarHolder>() {
+                holder.shutdown();
+            }
+        }
+    });
 }
 
 /// Install a `tracing_subscriber` writing to `app_local_data_dir/logs/<date>.log`.

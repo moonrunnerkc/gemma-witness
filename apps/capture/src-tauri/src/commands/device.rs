@@ -1,6 +1,5 @@
 //! Device key initialization and per-capture lifecycle commands.
 
-use rand::RngCore;
 use tauri::{AppHandle, Manager, State};
 use witness_core::keystore::load_or_create_device_key;
 use witness_inference::SIDECAR_TOKEN_ENV;
@@ -34,28 +33,18 @@ pub async fn initialize_device(
     // "extract the file to publish the signer's key" mistake closed under
     // audit finding C-5.
 
+    // The sidecar manager (apps/capture/src-tauri/src/sidecar.rs) issues
+    // GW_SIDECAR_TOKEN before this command runs and spawns the sidecar with
+    // the same value in its env. We only read it here.
     let token = std::env::var(SIDECAR_TOKEN_ENV)
         .ok()
-        .filter(|s| !s.is_empty());
-    let token = match token {
-        Some(t) => t,
-        None => {
-            // Issue a fresh per-launch token and write it into our own env
-            // for downstream witness-inference calls. The sidecar process
-            // must be started with the same value via its own env var; this
-            // is documented in inference/mlx-sidecar/README.md.
-            let mut buf = [0u8; 32];
-            rand::rngs::OsRng.fill_bytes(&mut buf);
-            let issued = hex::encode(buf);
-            std::env::set_var(SIDECAR_TOKEN_ENV, &issued);
-            tracing::info!(
-                "issued per-launch sidecar token; start the sidecar with GW_SIDECAR_TOKEN={} \
-                 (the audit recommends spawning the sidecar from the capture app to avoid this manual step)",
-                issued
-            );
-            issued
-        }
-    };
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| AppError::State {
+            detail: format!(
+                "{SIDECAR_TOKEN_ENV} is not set. the sidecar manager should populate it at app launch; \
+                 if you launched the capture app outside `pnpm dev` make sure {SIDECAR_TOKEN_ENV} is exported."
+            ),
+        })?;
 
     {
         let mut guard = state.lock().await;
