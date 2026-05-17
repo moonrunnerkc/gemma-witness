@@ -6,8 +6,12 @@ name: Release
 # the signing identity.
 
 on:
-  push:
-    tags: ["v*"]
+  # Auto-trigger on tag push is disabled to avoid spending GitHub Actions
+  # minutes on every beta tag. Releases are cut manually via the GitHub
+  # UI for now; this workflow stays available via workflow_dispatch so a
+  # maintainer can run the full signed-release pipeline on demand when
+  # they have budget for the three-OS matrix + cosign + SLSA jobs.
+  workflow_dispatch:
 
 permissions:
   contents: write

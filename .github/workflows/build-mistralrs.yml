@@ -16,6 +16,10 @@ name: Build mistralrs pinned binary
 #                         release if reproduction diverges.
 
 on:
+  # Auto-trigger on tag push is disabled to avoid spending GitHub Actions
+  # minutes on every tag. The pinned-binary check stays available via
+  # workflow_dispatch for the bootstrap PR and for on-demand re-verification
+  # before a production release.
   workflow_dispatch:
     inputs:
       upstream_commit:
@@ -25,8 +29,6 @@ on:
           from placeholder=true.
         required: false
         type: string
-  push:
-    tags: ["v*"]
 
 permissions:
   contents: write
