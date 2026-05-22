@@ -36,7 +36,7 @@ jobs:
           components: rust-src
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.7.3
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.7.3
         with:
           prefix-key: "v1-fuzz-nightly"
           workspaces: |
