@@ -17,7 +17,7 @@
   "devDependencies": {
     "esbuild": "^0.28.0",
     "sigstore": "4.1.0",
-    "tsx": "^4.22.0",
+    "tsx": "^4.22.3",
     "typescript": "^5.5.0"
   }
 }
