@@ -146,7 +146,7 @@ jobs:
           ( cd release-artifacts && shasum -a 256 * > SHASUMS256.txt )
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@e11c0892438d2c0a48e49dee376e4883f10f2e59 # v3.3.0
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v3.3.0
         with:
           cosign-release: "v2.2.3"
 
