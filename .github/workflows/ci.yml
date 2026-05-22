@@ -96,7 +96,7 @@ jobs:
         # Pinned to current. The taiki-e @latest resolver returns 0.28.0,
         # which fails coverage merge on aarch64-apple-darwin with
         # "Parsing failed" after instrumented runs.
-        uses: taiki-e/install-action@5c256d5a578917d032b8adcd9802cfa432265631 # v2.32.18
+        uses: taiki-e/install-action@e0eafa9a0d485c37f97c0f7beb930a58a2facbac # v2.79.4
         with:
           tool: cargo-tarpaulin@0.35.4
 
