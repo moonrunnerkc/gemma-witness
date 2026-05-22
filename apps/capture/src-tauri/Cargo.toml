@@ -18,7 +18,7 @@ witness-inference = { path = "../../../crates/witness-inference" }
 witness-fingerprints = { path = "../../../crates/witness-fingerprints" }
 gethostname = "0.5"
 dirs = "5"
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 uuid = { version = "1", features = ["v4"] }
 rand = { workspace = true }
